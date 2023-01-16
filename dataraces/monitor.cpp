@@ -8,11 +8,12 @@
 
 #define ADDRCELLSIZE 8
 #define THREADCELLSIZE 4
+#define VAMOSDR_COUNT_POTENTIAL_RACES
 
 using namespace std;
 
 enum class ActionType {
-	ATRead, ATWrite, ATLock, ATUnlock, ATAlloc, ATFree, ATFork, ATJoin, ATSkipStart, ATSkipEnd, ATDone
+	ATRead, ATWrite, ATLock, ATUnlock, ATHappensIn, ATHappensOut, ATAlloc, ATFree, ATFork, ATJoin, ATSkipStart, ATSkipEnd, ATDone
 };
 
 typedef union {
@@ -41,6 +42,12 @@ void print_action(ActionType type, Action &act)
 		break;
 		case ActionType::ATUnlock:
 		printf("unlock(%li)",act.unlock.addr);
+		break;
+		case ActionType::ATHappensIn:
+		printf("happensIn(%li)",act.lock.addr);
+		break;
+		case ActionType::ATHappensOut:
+		printf("happensOut(%li)",act.unlock.addr);
 		break;
 		case ActionType::ATAlloc:
 		printf("alloc(%li, %lu)",act.alloc.addr, act.alloc.size);
@@ -76,25 +83,34 @@ class Cell {
 	Action action;
 };
 
+class ThreadInfo {
+	public:
+	uint64_t lastHappensOut;
+	uint64_t lastHappensIn;
+	uint64_t lastSkipStart;
+	uint64_t lastSkipEnd;
+	set<intptr_t> locks;
+};
+
 Cell * head=new Cell();
 Cell * tail=head;
 size_t cellcount=0;
 uint64_t racecount=0;
+uint64_t potentialracecount=0;
 
 extern "C" uint64_t GetRaceCount() { return racecount; }
+extern "C" uint64_t GetPotentialRaceCount() { return potentialracecount; }
 
 class Lockset
 {
 	public:
 	unordered_set<intptr_t> addrs;
 	unordered_set<int> threads;
-	unordered_set<int> skipthreads;
-	unordered_set<int> skippedthreads;
 };
 
 class Info {
 	public:
-	Info(int owner):owner(owner),pos(0),alock(0),lockset()
+	Info(int owner, uint64_t timestamp):owner(owner),pos(0),timestamp(timestamp),alock(0),lockset()
 	{
 		pos=tail;
 		lockset.threads.insert(owner);
@@ -103,6 +119,7 @@ class Info {
 	Info(const Info &a) =delete;
 	int owner;
 	Cell * pos;
+	uint64_t timestamp;
 	intptr_t alock;
 	Lockset lockset;
 };
@@ -110,7 +127,7 @@ class Info {
 unordered_map<intptr_t, Info> Writes;
 unordered_map<intptr_t, map<int, Info>> Reads;
 unordered_map<intptr_t, int> LockThreads;
-map<int, set<intptr_t>> ThreadLocks;
+map<int, ThreadInfo> threads;
 
 void print_lockset(Lockset &ls, bool printNewline=true)
 {
@@ -224,7 +241,7 @@ inline bool thread_holds_lock(int thrd, intptr_t lock)
 	return false;
 }
 
-void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, ActionType action, intptr_t addr, int otherthread)
+void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, ActionType action, intptr_t addr, int otherthread, uint64_t orig_timestamp)
 {
 	Cell* pos1=*pos1r;
 	Cell* origpos1=pos1;
@@ -233,34 +250,26 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 		switch(pos1->type)
 		{
 			case ActionType::ATLock:
+			case ActionType::ATHappensIn:
 			{
-				if(ls.addrs.find(pos1->action.lock.addr)!=ls.addrs.end()||!ls.skipthreads.empty()||!ls.skippedthreads.empty())
+				if(ls.addrs.find(pos1->action.lock.addr)!=ls.addrs.end())
 				{
 					ls.threads.insert(pos1->threadid);
 				}
 			}
 			break;
 			case ActionType::ATUnlock:
+			case ActionType::ATHappensOut:
 			{
-				if(ls.threads.find(pos1->threadid)!=ls.threads.end()||ls.skipthreads.find(pos1->threadid)!=ls.skipthreads.end()||ls.skippedthreads.find(pos1->threadid)!=ls.skippedthreads.end())
+				if(ls.threads.find(pos1->threadid)!=ls.threads.end())
 				{
 					ls.addrs.insert(pos1->action.unlock.addr);
 				}
 			}
 			break;
-			case ActionType::ATAlloc:
-			{
-
-			}
-			break;
-			case ActionType::ATFree:
-			{
-
-			}
-			break;
 			case ActionType::ATFork:
 			{
-				if(ls.threads.find(pos1->threadid)!=ls.threads.end()||ls.skipthreads.find(pos1->threadid)!=ls.skipthreads.end()||ls.skippedthreads.find(pos1->threadid)!=ls.skippedthreads.end())
+				if(ls.threads.find(pos1->threadid)!=ls.threads.end())
 				{
 					ls.threads.insert(pos1->action.fork.newthreadid);
 				}
@@ -268,7 +277,7 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 			break;
 			case ActionType::ATJoin:
 			{
-				if(ls.threads.find(pos1->action.join.threadid)!=ls.threads.end()||ls.skipthreads.find(pos1->action.join.threadid)!=ls.skipthreads.end()||ls.skippedthreads.find(pos1->action.join.threadid)!=ls.skippedthreads.end())
+				if(ls.threads.find(pos1->action.join.threadid)!=ls.threads.end())
 				{
 					ls.threads.insert(pos1->threadid);
 				}
@@ -276,55 +285,6 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 			break;
 			case ActionType::ATDone:
 			{
-			}
-			break;
-			// case ActionType::ATRead:
-			// {
-			// 	if((!ls.addrs.empty())&&ls.addrs.find(pos1->action.read.addr)==ls.addrs.end()&&ls.skipthreads.find(pos1->threadid)==ls.skipthreads.end()&&ls.skippedthreads.find(pos1->threadid)==ls.skippedthreads.end())
-			// 	{
-			// 		printf("Found data race: Thread %i read from %li without synchronization\n", pos1->threadid, pos1->action.read.addr);
-			// 	}
-			// 	else
-			// 	{
-			// 		printf("read is fine\n");
-			// 	}
-			// 	ls.addrs.clear();
-			// 	if(ls.threads.size()!=1||(*ls.threads.begin())!=pos1->threadid)
-			// 	{
-			// 		ls.threads.clear();
-			// 		ls.threads.insert(pos1->threadid);
-			// 	}
-			// 	ls.skippedthreads.clear();
-			// }
-			// break;
-			// case ActionType::ATWrite:
-			// {
-			// 	if((!ls.addrs.empty())&&ls.addrs.find(pos1->action.write.addr)==ls.addrs.end()&&ls.skipthreads.find(pos1->threadid)==ls.skipthreads.end()&&ls.skippedthreads.find(pos1->threadid)==ls.skippedthreads.end())
-			// 	{
-			// 		fprintf(stderr, "Found data race: Thread %i wrote to %li without synchronization\n", pos1->threadid, pos1->action.write.addr);
-			// 	}
-			// 	else
-			// 	{
-			// 		printf("write is fine\n");
-			// 	}
-			// 	ls.addrs.clear();
-			// 	if(ls.threads.size()!=1||(*ls.threads.begin())!=pos1->threadid)
-			// 	{
-			// 		ls.threads.clear();
-			// 		ls.threads.insert(pos1->threadid);
-			// 	}
-			// 	ls.skippedthreads.clear();
-			// }
-			// break;
-			case ActionType::ATSkipStart:
-			{
-				ls.skipthreads.insert(pos1->threadid);
-			}
-			break;
-			case ActionType::ATSkipEnd:
-			{
-				ls.skipthreads.erase(pos1->threadid);
-				ls.skippedthreads.insert(pos1->threadid);
 			}
 			break;
 		}
@@ -337,10 +297,22 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 	{		
 		case ActionType::ATRead:
 		{
-			if((!(ls.addrs.empty()&&ls.threads.empty()))&&ls.threads.find(owner2)==ls.threads.end()&&ls.skipthreads.find(owner2)==ls.skipthreads.end()&&ls.skippedthreads.find(owner2)==ls.skippedthreads.end())
+			if((!(ls.addrs.empty()&&ls.threads.empty()))&&ls.threads.find(owner2)==ls.threads.end())
 			{
-				fprintf(stderr, "Found data race: Thread %i read from %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
-				racecount++;
+				auto &tinfo=threads[owner2];
+				auto &otinfo=threads[otherthread];
+				if((otinfo.lastSkipStart>orig_timestamp&&tinfo.lastHappensIn>otinfo.lastSkipStart) || (tinfo.lastSkipEnd>orig_timestamp&&tinfo.lastHappensOut>tinfo.lastSkipEnd))
+				{
+					#ifdef VAMOSDR_COUNT_POTENTIAL_RACES
+					fprintf(stderr, "Potential data race: Thread %i read to %p, potentially without synchronizing with thread %i (relevant events skipped)\n", owner2, (void*)addr, otherthread);
+					potentialracecount++;
+					#endif
+				}
+				else
+				{
+					fprintf(stderr, "Found data race: Thread %i read from %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
+					racecount++;
+				}
 			}
 			// else
 			// {
@@ -352,15 +324,26 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 				ls.threads.clear();
 				ls.threads.insert(owner2);
 			}
-			ls.skippedthreads.clear();
 		}
 		break;
 		case ActionType::ATWrite:
 		{
-			if((!(ls.addrs.empty()&&ls.threads.empty()))&&ls.threads.find(owner2)==ls.threads.end()&&ls.skipthreads.find(owner2)==ls.skipthreads.end()&&ls.skippedthreads.find(owner2)==ls.skippedthreads.end())
+			if((!(ls.addrs.empty()&&ls.threads.empty()))&&ls.threads.find(owner2)==ls.threads.end())
 			{
-				fprintf(stderr, "Found data race: Thread %i wrote to %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
-				racecount++;
+				auto &tinfo=threads[owner2];
+				auto &otinfo=threads[otherthread];
+				if((otinfo.lastSkipStart>orig_timestamp&&tinfo.lastHappensIn>otinfo.lastSkipStart) || (tinfo.lastSkipEnd>orig_timestamp&&tinfo.lastHappensOut>tinfo.lastSkipEnd))
+				{
+					#ifdef VAMOSDR_COUNT_POTENTIAL_RACES
+					fprintf(stderr, "Potential data race: Thread %i wrote to %p, potentially without synchronizing with thread %i (relevant events skipped)\n", owner2, (void*)addr, otherthread);
+					potentialracecount++;
+					#endif
+				}
+				else
+				{
+					fprintf(stderr, "Found data race: Thread %i wrote to %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
+					racecount++;
+				}
 			}
 			// else
 			// {
@@ -372,7 +355,6 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 				ls.threads.clear();
 				ls.threads.insert(owner2);
 			}
-			ls.skippedthreads.clear();
 		}
 		break;
 	}
@@ -388,16 +370,13 @@ void check_happens_before(Info &info1, Info &info2, ActionType action, intptr_t 
 	// }
 	if((info1.owner!=info2.owner)&&(!thread_holds_lock(info2.owner,info1.alock)))
 	{
-		apply_lockset_rules(info1.lockset, &info1.pos, info2.pos, info2.owner, action, addr, info1.owner);
+		apply_lockset_rules(info1.lockset, &info1.pos, info2.pos, info2.owner, action, addr, info1.owner, info1.timestamp);
 		info2.alock=0;
-		auto posn=ThreadLocks.find(info1.owner);
-		if(posn!=ThreadLocks.end())
+		auto tinfo=threads[info1.owner];
+		auto posn=tinfo.locks.begin();
+		if(posn!=tinfo.locks.end())
 		{
-			auto posn2=posn->second.begin();
-			if(posn2!=posn->second.end())
-			{
-				info2.alock=*posn2;
-			}
+			info2.alock=*posn;
 		}
 	}
 }
@@ -410,7 +389,7 @@ extern "C" void monitor_handle_read(int tid, uint64_t timestamp, intptr_t addr)
 	cell_rc_inc(tail);
 	if(entry==addrmap.end())
 	{
-		entry=addrmap.insert_or_assign(tid,tid).first;
+		entry=addrmap.try_emplace(tid,tid,timestamp).first;
 	}
 	else
 	{
@@ -419,6 +398,7 @@ extern "C" void monitor_handle_read(int tid, uint64_t timestamp, intptr_t addr)
 		entry->second.lockset.addrs.clear();
 		entry->second.lockset.threads.clear();
 		entry->second.lockset.threads.insert(tid);
+		entry->second.timestamp=timestamp;
 		cell_rc_dec(entry->second.pos);
 		entry->second.pos=tail;
 	}
@@ -439,15 +419,15 @@ extern "C" void monitor_handle_read_many(int tid, uint64_t timestamp, intptr_t a
 extern "C" void monitor_handle_write(int tid, uint64_t timestamp, intptr_t addr)
 {
 	// printf("MWRITE! %p\n", addr);
-	Info info(tid);
+	Info info(tid, timestamp);
 	cell_rc_inc(tail);
 	// print_cell(*head,true);
 	auto rinfo = Reads.find(addr);
 	if(rinfo!=Reads.end())
 	{
-		for(auto tlp=ThreadLocks.begin();tlp!=ThreadLocks.end();tlp++)
+		for(auto &tlp : threads)
 		{
-			auto trinfo = rinfo->second.find(tlp->first);
+			auto trinfo = rinfo->second.find(tlp.first);
 			if(trinfo!=rinfo->second.end())
 			{
 				check_happens_before(trinfo->second, info, ActionType::ATWrite, addr);
@@ -467,7 +447,7 @@ extern "C" void monitor_handle_write(int tid, uint64_t timestamp, intptr_t addr)
 	}
 	else
 	{
-		Writes.insert_or_assign(addr, tid);
+		Writes.try_emplace(addr, tid, timestamp);
 		// printf("MWRITE: no writes found, %p\n", addr);
 	}
 	if(rinfo!=Reads.end())
@@ -488,13 +468,30 @@ extern "C" void monitor_handle_write_many(int tid, uint64_t timestamp, intptr_t 
 	}
 }
 
+extern "C" void monitor_handle_happensin(int tid, uint64_t timestamp, intptr_t addr)
+{
+	Action a;
+	a.lock.addr=addr;
+	enqueue_sync_event(tid, ActionType::ATHappensIn, a);
+	threads[tid].lastHappensIn=timestamp;
+}
+
+extern "C" void monitor_handle_happensout(int tid, uint64_t timestamp, intptr_t addr)
+{
+	Action a;
+	a.unlock.addr=addr;
+	enqueue_sync_event(tid, ActionType::ATHappensOut, a);
+	threads[tid].lastHappensOut=timestamp;
+}
+
 extern "C" void monitor_handle_lock(int tid, uint64_t timestamp, intptr_t addr)
 {
 	Action a;
 	a.lock.addr=addr;
 	LockThreads[addr]=tid;
-	ThreadLocks[tid].insert(addr);
+	threads[tid].locks.insert(addr);
 	enqueue_sync_event(tid, ActionType::ATLock, a);
+	threads[tid].lastHappensIn=timestamp;
 }
 
 extern "C" void monitor_handle_unlock(int tid, uint64_t timestamp, intptr_t addr)
@@ -502,19 +499,20 @@ extern "C" void monitor_handle_unlock(int tid, uint64_t timestamp, intptr_t addr
 	Action a;
 	a.unlock.addr=addr;
 	LockThreads.erase(addr);
-	ThreadLocks[tid].erase(addr);
+	threads[tid].locks.erase(addr);
 	enqueue_sync_event(tid, ActionType::ATUnlock, a);
+	threads[tid].lastHappensOut=timestamp;
 }
 
 extern "C" void monitor_handle_skip_start(int tid, uint64_t timestamp)
 {
 	Action a;
-	enqueue_sync_event(tid, ActionType::ATSkipStart, a);
+	threads[tid].lastSkipStart=timestamp;
 }
 extern "C" void monitor_handle_skip_end(int tid, uint64_t timestamp)
 {
 	Action a;
-	enqueue_sync_event(tid, ActionType::ATSkipEnd, a);
+	threads[tid].lastSkipEnd=timestamp;
 }
 extern "C" void monitor_handle_alloc(int tid, uint64_t timestamp, intptr_t addr, size_t size)
 {
@@ -534,7 +532,10 @@ extern "C" void monitor_handle_fork(int tid, uint64_t timestamp, int otherthread
 {
 	Action a;
 	a.fork.newthreadid=otherthread;
+	threads.erase(otherthread);
 	enqueue_sync_event(tid, ActionType::ATFork, a);
+	threads[otherthread].lastHappensIn=timestamp;
+	threads[tid].lastHappensOut=timestamp;
 }
 
 extern "C" void monitor_handle_join(int tid, uint64_t timestamp, int otherthread)
@@ -542,13 +543,14 @@ extern "C" void monitor_handle_join(int tid, uint64_t timestamp, int otherthread
 	Action a;
 	a.join.threadid=otherthread;
 	enqueue_sync_event(tid, ActionType::ATJoin, a);
+	threads[otherthread].lastHappensOut=timestamp;
+	threads[tid].lastHappensIn=timestamp;
 }
 
 extern "C" void monitor_handle_done(int tid, uint64_t timestamp)
 {
 	Action a;
-	enqueue_sync_event(tid, ActionType::ATDone, a);
-	ThreadLocks.erase(tid);
+	//enqueue_sync_event(tid, ActionType::ATDone, a);
 	bool eraseNext=false;
 	intptr_t eraseKey=0;
 	for(auto &entry : LockThreads)
