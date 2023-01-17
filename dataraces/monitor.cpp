@@ -304,26 +304,35 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 				if((otinfo.lastSkipStart>orig_timestamp&&tinfo.lastHappensIn>otinfo.lastSkipStart) || (tinfo.lastSkipEnd>orig_timestamp&&tinfo.lastHappensOut>tinfo.lastSkipEnd))
 				{
 					#ifdef VAMOSDR_COUNT_POTENTIAL_RACES
+					#if DEBUGPRINT
+					fprintf(stderr, "//Potential data race: Thread %i read to %p, potentially without synchronizing with thread %i (relevant events skipped)\n", owner2, (void*)addr, otherthread);
+					#else
 					fprintf(stderr, "Potential data race: Thread %i read to %p, potentially without synchronizing with thread %i (relevant events skipped)\n", owner2, (void*)addr, otherthread);
+					#endif
 					potentialracecount++;
 					#endif
 				}
 				else
 				{
+					#if DEBUGPRINT
+					fprintf(stderr, "//Found data race: Thread %i read from %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
+					#else
 					fprintf(stderr, "Found data race: Thread %i read from %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
-					racecount++;
+					#endif
+				racecount++;
 				}
 			}
 			// else
 			// {
 			// 	printf("read is fine\n");
 			// }
-			ls.addrs.clear();
-			if(ls.threads.size()!=1||(*ls.threads.begin())!=owner2)
-			{
-				ls.threads.clear();
-				ls.threads.insert(owner2);
-			}
+			// ls.addrs.clear();
+			// if(ls.threads.size()!=1||(*ls.threads.begin())!=owner2)
+			// {
+			// 	ls.threads.clear();
+			// 	ls.threads.insert(owner2);
+			// }
+			// ls.skippedthreads.clear();
 		}
 		break;
 		case ActionType::ATWrite:
@@ -335,26 +344,35 @@ void apply_lockset_rules(Lockset &ls, Cell **pos1r, Cell *pos2, int owner2, Acti
 				if((otinfo.lastSkipStart>orig_timestamp&&tinfo.lastHappensIn>otinfo.lastSkipStart) || (tinfo.lastSkipEnd>orig_timestamp&&tinfo.lastHappensOut>tinfo.lastSkipEnd))
 				{
 					#ifdef VAMOSDR_COUNT_POTENTIAL_RACES
+					#if DEBUGPRINT
+					fprintf(stderr, "//Potential data race: Thread %i wrote to %p, potentially without synchronizing with thread %i (relevant events skipped)\n", owner2, (void*)addr, otherthread);
+					#else
 					fprintf(stderr, "Potential data race: Thread %i wrote to %p, potentially without synchronizing with thread %i (relevant events skipped)\n", owner2, (void*)addr, otherthread);
+					#endif
 					potentialracecount++;
 					#endif
 				}
 				else
 				{
+					#if DEBUGPRINT
+					fprintf(stderr, "//Found data race: Thread %i wrote to %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
+					#else
 					fprintf(stderr, "Found data race: Thread %i wrote to %p without synchronizing with thread %i\n", owner2, (void*)addr, otherthread);
-					racecount++;
+					#endif
+				racecount++;
 				}
 			}
 			// else
 			// {
 			// 	printf("write is fine\n");
 			// }
-			ls.addrs.clear();
-			if(ls.threads.size()!=1||(*ls.threads.begin())!=owner2)
-			{
-				ls.threads.clear();
-				ls.threads.insert(owner2);
-			}
+			// ls.addrs.clear();
+			// if(ls.threads.size()!=1||(*ls.threads.begin())!=owner2)
+			// {
+			// 	ls.threads.clear();
+			// 	ls.threads.insert(owner2);
+			// }
+			// ls.skippedthreads.clear();
 		}
 		break;
 	}
@@ -381,8 +399,7 @@ void check_happens_before(Info &info1, Info &info2, ActionType action, intptr_t 
 	}
 }
 
-
-extern "C" void monitor_handle_read(int tid, uint64_t timestamp, intptr_t addr)
+inline void monitor_handle_read_(int tid, uint64_t timestamp, intptr_t addr)
 {
 	auto &addrmap = Reads[addr];
 	auto entry = addrmap.find(tid);
@@ -408,15 +425,27 @@ extern "C" void monitor_handle_read(int tid, uint64_t timestamp, intptr_t addr)
 		check_happens_before(wentry->second,entry->second, ActionType::ATRead, addr);
 	}
 }
+
+extern "C" void monitor_handle_read(int tid, uint64_t timestamp, intptr_t addr)
+{
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_read(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
+	monitor_handle_read_(tid, timestamp, addr);
+}
+
 extern "C" void monitor_handle_read_many(int tid, uint64_t timestamp, intptr_t addr, size_t bytes)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_read_many(%i, %lu, %p, %lu);\n", tid, timestamp, (void*)addr, bytes);
+	#endif
 	for(size_t i=0;i<bytes;i++)
 	{
-		monitor_handle_read(tid,timestamp,addr+i);
+		monitor_handle_read_(tid,timestamp,addr+i);
 	}
 }
 
-extern "C" void monitor_handle_write(int tid, uint64_t timestamp, intptr_t addr)
+inline void monitor_handle_write_(int tid, uint64_t timestamp, intptr_t addr)
 {
 	// printf("MWRITE! %p\n", addr);
 	Info info(tid, timestamp);
@@ -460,11 +489,23 @@ extern "C" void monitor_handle_write(int tid, uint64_t timestamp, intptr_t addr)
 	}
 	Reads.extract(addr);
 }
+
+extern "C" void monitor_handle_write(int tid, uint64_t timestamp, intptr_t addr)
+{
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_write(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
+	monitor_handle_write_(tid,timestamp,addr);
+}
+
 extern "C" void monitor_handle_write_many(int tid, uint64_t timestamp, intptr_t addr, size_t bytes)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_write_many(%i, %lu, %p, %lu);\n", tid, timestamp, (void*)addr, bytes);
+	#endif
 	for(size_t i=0;i<bytes;i++)
 	{
-		monitor_handle_write(tid,timestamp,addr+i);
+		monitor_handle_write_(tid,timestamp,addr+i);
 	}
 }
 
@@ -486,6 +527,9 @@ extern "C" void monitor_handle_happensout(int tid, uint64_t timestamp, intptr_t 
 
 extern "C" void monitor_handle_lock(int tid, uint64_t timestamp, intptr_t addr)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_lock(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
 	Action a;
 	a.lock.addr=addr;
 	LockThreads[addr]=tid;
@@ -496,6 +540,9 @@ extern "C" void monitor_handle_lock(int tid, uint64_t timestamp, intptr_t addr)
 
 extern "C" void monitor_handle_unlock(int tid, uint64_t timestamp, intptr_t addr)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_unlock(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
 	Action a;
 	a.unlock.addr=addr;
 	LockThreads.erase(addr);
@@ -506,16 +553,25 @@ extern "C" void monitor_handle_unlock(int tid, uint64_t timestamp, intptr_t addr
 
 extern "C" void monitor_handle_skip_start(int tid, uint64_t timestamp)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_skip_start(%i, %lu);\n", tid, timestamp);
+	#endif
 	Action a;
 	threads[tid].lastSkipStart=timestamp;
 }
 extern "C" void monitor_handle_skip_end(int tid, uint64_t timestamp)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_skip_end(%i, %lu);\n", tid, timestamp);
+	#endif
 	Action a;
 	threads[tid].lastSkipEnd=timestamp;
 }
 extern "C" void monitor_handle_alloc(int tid, uint64_t timestamp, intptr_t addr, size_t size)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_alloc(%i, %lu, %p, %lu);\n", tid, timestamp, (void*)addr, size);
+	#endif
 	Action a;
 	a.alloc.addr=addr;
 	a.alloc.size=size;
@@ -524,12 +580,18 @@ extern "C" void monitor_handle_alloc(int tid, uint64_t timestamp, intptr_t addr,
 
 extern "C" void monitor_handle_free(int tid, uint64_t timestamp, intptr_t addr)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_free(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
 	Action a;
 	a.free.addr=addr;
 	enqueue_sync_event(tid, ActionType::ATFree, a);
 }
 extern "C" void monitor_handle_fork(int tid, uint64_t timestamp, int otherthread)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_fork(%i, %lu, %i);\n", tid, timestamp, otherthread);
+	#endif
 	Action a;
 	a.fork.newthreadid=otherthread;
 	threads.erase(otherthread);
@@ -540,6 +602,9 @@ extern "C" void monitor_handle_fork(int tid, uint64_t timestamp, int otherthread
 
 extern "C" void monitor_handle_join(int tid, uint64_t timestamp, int otherthread)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_join(%i, %lu, %i);\n", tid, timestamp, otherthread);
+	#endif
 	Action a;
 	a.join.threadid=otherthread;
 	enqueue_sync_event(tid, ActionType::ATJoin, a);
@@ -549,6 +614,9 @@ extern "C" void monitor_handle_join(int tid, uint64_t timestamp, int otherthread
 
 extern "C" void monitor_handle_done(int tid, uint64_t timestamp)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_done(%i, %lu);\n", tid, timestamp);
+	#endif
 	Action a;
 	//enqueue_sync_event(tid, ActionType::ATDone, a);
 	bool eraseNext=false;
