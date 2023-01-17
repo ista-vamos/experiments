@@ -511,6 +511,9 @@ extern "C" void monitor_handle_write_many(int tid, uint64_t timestamp, intptr_t 
 
 extern "C" void monitor_handle_happensin(int tid, uint64_t timestamp, intptr_t addr)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_happensin(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
 	Action a;
 	a.lock.addr=addr;
 	enqueue_sync_event(tid, ActionType::ATHappensIn, a);
@@ -519,6 +522,9 @@ extern "C" void monitor_handle_happensin(int tid, uint64_t timestamp, intptr_t a
 
 extern "C" void monitor_handle_happensout(int tid, uint64_t timestamp, intptr_t addr)
 {
+	#ifdef DEBUGPRINT
+	printf("monitor_handle_happensout(%i, %lu, %p);\n", tid, timestamp, (void*)addr);
+	#endif
 	Action a;
 	a.unlock.addr=addr;
 	enqueue_sync_event(tid, ActionType::ATHappensOut, a);
