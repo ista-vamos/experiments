@@ -1,4 +1,4 @@
-stream type ThreadEvent(threadid: int, tstate : int16_t, nonecount : uint16_t, nextts: uint64_t, nonets: uint64_t, optskipstart : uint64_t)
+stream type ThreadEvent(threadid: int, inhole : int, nonecount : uint64_t, curts: uint64_t, nonets: uint64_t, skipping : int)
 {
     read(timestamp: uint64_t, addr : intptr_t);
     write(timestamp: uint64_t, addr : intptr_t);
@@ -24,7 +24,7 @@ stream processor TEProcessor(threadid : int) : ThreadEvent(threadid, 0, 0, 0, 0,
     }
 }
 
-buffer group Threads : ThreadEvent
+buffer group Threads : ThreadEvent order by round robin
 event source Program : ThreadEvent process using TEProcessor(0) to autodrop(@BUFSIZE,256) include in Threads
 
 stream type GlobalEvent
@@ -51,8 +51,7 @@ $$
     #include "monitor.h"
     uint64_t nextts=1;
     uint64_t leastts=ULLONG_MAX;
-    uint64_t skipcount=0;
-    uint16_t nonebarrier=1;
+    uint64_t nonebarrier=1;
     uint64_t nonecycles=0;
     uint64_t dropcount=0;
     uint64_t holescount=0;
@@ -60,348 +59,546 @@ $$
     int findleast=0;
     #define min(a, b) __vamos_min(a, b)
     #define max(a, b) __vamos_max(a, b)
+    #define EVBUFSIZE (@BUFSIZE*8)
+
+    typedef enum EVKIND { EVNONE, EVREAD, EVWRITE, EVREADSIZED, EVWRITESIZED, EVLOCK, EVUNLOCK, EVFORK, EVJOIN, EVSKIPSTART, EVSKIPEND, EVDONE } evkind;
+    typedef struct {
+        uint64_t timestamp;
+        int tid;
+        int skipend;
+        evkind kind;
+        union
+        {
+            struct {
+                intptr_t addr;
+            } read;
+            struct {
+                intptr_t addr;
+            } write;
+            struct {
+                intptr_t addr;
+                size_t size;
+            } read_sized;
+            struct {
+                intptr_t addr;
+                size_t size;
+            } write_sized;
+            struct {
+                intptr_t addr;
+            } lock;
+            struct {
+                intptr_t addr;
+            } unlock;
+            struct {
+                int tid;
+            } fork;
+            struct {
+                int tid;
+            } join;
+            struct {
+            } skipstart;
+            struct {
+            } skipend;
+            struct {
+            } done;
+        } data;
+    } GEvent;
+    typedef struct ThrdList_ {
+        int tid;
+        int skipping;
+        struct ThrdList_ * next;
+    } ThrdList;
+
+    GEvent evbuf[EVBUFSIZE];
+    uint64_t evbufsize = EVBUFSIZE;
+    uint64_t evbufstart = 0;
+    uint64_t evbufend = EVBUFSIZE;
+    uint64_t evbufpos = 0;
+    uint64_t nextevbufstart=EVBUFSIZE;
+    uint64_t maxts=0;
+    int64_t evbuffree=EVBUFSIZE;
+    int64_t skipcount=0;
+    uint64_t handledcount=0;
+    ThrdList * doneThreads=0;
+    void evbuf_process(int quick)
+    {
+        GEvent* ev=evbuf+evbufpos;
+        GEvent* evend=evbuf+evbufsize;
+        while(ev<evend)
+        {
+            if(ev->timestamp>0)
+            {
+                int tid=ev->tid;
+                uint64_t ts=ev->timestamp;
+                if(ev->skipend)
+                {
+                    $yield skipend(tid, ts);
+                }
+                switch(ev->kind)
+                {
+                    case EVNONE:
+                    {
+                        printf("Warning: invalid event in buffer with timestamp");
+                    }
+                    break;
+                    case EVREAD:
+                    {
+                        intptr_t addr = ev->data.read.addr;
+                        $yield read(tid, ts, addr);
+                    }
+                    break;
+                    case EVWRITE:
+                    {
+                        intptr_t addr = ev->data.write.addr;
+                        $yield write(tid, ts, addr);
+                    }
+                    break;
+                    case EVREADSIZED:
+                    {
+                        intptr_t addr = ev->data.read.addr;
+                        size_t size=ev->data.read_sized.size;
+                        $yield read_sized(tid, ts, addr, size);
+                    }
+                    break;
+                    case EVWRITESIZED:
+                    {
+                        intptr_t addr = ev->data.write.addr;
+                        size_t size=ev->data.write_sized.size;
+                        $yield write_sized(tid, ts, addr, size);
+                    }
+                    break;
+                    case EVLOCK:
+                    {
+                        intptr_t addr = ev->data.lock.addr;
+                        $yield lock(tid, ts, addr);
+                    }
+                    break;
+                    case EVUNLOCK:
+                    {
+                        intptr_t addr = ev->data.unlock.addr;
+                        $yield unlock(tid, ts, addr);
+                    }
+                    break;
+                    case EVFORK:
+                    {
+                        int otid = ev->data.fork.tid;
+                        $yield fork(tid, ts, otid);
+                    }
+                    break;
+                    case EVJOIN:
+                    {
+                        int otid = ev->data.join.tid;
+                        $yield join(tid, ts, otid);
+                    }
+                    break;
+                    case EVSKIPSTART:
+                    {
+                        $yield skipstart(tid, ts);
+                    }
+                    break;
+                    case EVSKIPEND:
+                    {
+                        $yield skipend(tid, ts);
+                    }
+                    break;
+                    case EVDONE:
+                    {
+                        $yield done_(tid, ts);
+                    }
+                    break;
+                }
+                ev->timestamp=0;
+            }
+            else if(!quick)
+            {
+                break;
+            }
+            evbufpos++;
+            ev++;
+        }
+        if(ev==evend)
+        {
+            evbufpos=0;
+            evbufstart=nextevbufstart;
+            evbufend=evbufstart+evbufsize;
+            nextevbufstart=evbufend;
+            evbuffree=evbufsize;
+            ThrdList * lastThread;
+            while(doneThreads!=0)
+            {
+                lastThread=doneThreads;
+                doneThreads=doneThreads->next;
+                int tid=lastThread->tid;
+                $yield done_(tid, evbufstart);
+                free(lastThread);
+            }
+        }
+    }
+
+    int evbuf_request(uint64_t ts, GEvent ** out_evaddr, evkind kind, int tid, int *T_skipping)
+    { 
+        ts=ts-1;
+        uint64_t pos=ts%evbufsize;
+        nextts=evbufstart+evbufpos+1;
+        if(ts>=evbufstart)
+        {
+            maxts=max(maxts,ts+1);
+            if(ts<evbufend)
+            {
+                *out_evaddr=evbuf+pos;
+                (*out_evaddr)->skipend=0;
+                (*out_evaddr)->tid=tid;
+                (*out_evaddr)->kind=kind;
+                (*out_evaddr)->timestamp=ts+1;
+                (*out_evaddr)->skipend=*T_skipping;
+                *T_skipping=0;
+                nonecycles=0;
+                nonebarrier=1;
+                evbuffree-=1;
+                if(pos==evbufpos)
+                {
+                    return 2;
+                }
+                else
+                {
+                    return 1;
+                }
+            }
+            else
+            {
+                if(ts-evbufend>evbufsize)
+                {
+                    uint64_t proto_start=ts-(ts%evbufsize);
+                    if(proto_start>nextevbufstart)
+                    {
+                        nextevbufstart=proto_start;
+                    }
+                }
+                if(ts<nextevbufstart)
+                {
+                    skipcount++;
+                    dropcount++;
+                    return 0;
+                }
+                return 3;
+            }
+        }
+        else
+        {
+            if(!*T_skipping)
+            {
+                $yield skipstart(tid, nextts);
+                *T_skipping=1;
+            }
+            skipcount++;
+            dropcount++;
+            return 0;
+        }
+    }
+$$
+
+loopdebug
+$$
+    printf("evbufstart = %lu\n", evbufstart);
+    printf("evbufend = %lu\n", evbufend);
+    printf("evbufpos = %lu\n", evbufpos);
+    printf("evbuffree = %li\n", evbuffree);
+    printf("skipcount = %li\n", skipcount);
+    printf("dropcount = %lu\n", dropcount);
+    printf("threadcount = %d\n", BG_Threads.size);
+    printf("handledcount = %lu\n", handledcount);
+    printf("nonecycles = %lu\n", nonecycles);
+    printf("nonebarrier = %lu\n", nonebarrier);
+    printf("maxts = %lu\n", maxts);
 $$
 
 cleanup
 $$
+    ThrdList * lastThread;
+    fprintf(stderr, "Handled %lu events\n", handledcount);
     fprintf(stderr, "Dropped %lu events in %lu holes\n", dropcount, holescount);
     fprintf(stderr, "Found %lu races\n", GetRaceCount());
 $$
 
 arbiter : GlobalEvent
 {
-    choose T from Threads where $$ ($T.nextts; <= nextts && ($T.nextts; == nextts || $T.nonecount; < nonebarrier || $T.nonets; < nextts)) || (findleast && $T.nextts; < leastts) $$
+    choose T from Threads where $$ ($T.curts;<evbufend && ($T.nonets; < evbufstart+evbufpos+1)) || BG_Threads.size==1 $$
     {
         on T : | read(ts,addr)
         $$
-            //printf("read! %lu/%lu\n",ts,nextts);
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("read! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVREAD, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield read(T.threadid, ts, addr);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.read.addr=addr;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
-                //printf("%lu/%lu\n",ts,nextts);
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | write(ts,addr)
         $$
-            //printf("write! %lu/%lu\n",ts,nextts);
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("write! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVWRITE, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield write(T.threadid, ts, addr);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.write.addr=addr;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | read_n(ts,addr, size)
         $$
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("read_n! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVREADSIZED, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield read_sized(T.threadid, ts, addr, size);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.read_sized.addr=addr;
+                ev->data.read_sized.size=size;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
-                //printf("%lu/%lu\n",ts,nextts);
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | write_n(ts,addr,size)
         $$
-            //printf("write! %lu/%lu\n",ts,nextts);
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("write_n! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVWRITESIZED, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield write_sized(T.threadid, ts, addr, size);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.write_sized.addr=addr;
+                ev->data.write_sized.size=size;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
 
-        on T : | atomicread(ts,addr,mode)
-        $$
-            if(ts==nextts)
-            {
-                $yield atomicread(T.threadid, ts, addr,mode);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
-            }
-            else if(ts>nextts)
-            {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
-                $drop 1 from T;
-            }
-        $$
-        on T : | atomicwrite(ts,addr,mode)
-        $$
-            if(ts==nextts)
-            {
-                $yield atomicwrite(T.threadid, ts, addr,mode);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
-            }
-            else if(ts>nextts)
-            {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
-                $drop 1 from T;
-            }
-        $$
         on T : | lock(ts,addr)
         $$
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("lock! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVLOCK, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield lock(T.threadid, ts, addr);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.lock.addr=addr;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | unlock(ts,addr)
         $$
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("unlock! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVUNLOCK, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield unlock(T.threadid, ts, addr);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.unlock.addr=addr;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
-                $drop 1 from T;
-            }
-        $$
-        on T : | alloc(ts,addr,size)
-        $$
-            if(ts==nextts)
-            {
-                $yield alloc(T.threadid, ts, addr, size);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
-            }
-            else if(ts>nextts)
-            {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
-                $drop 1 from T;
-            }
-        $$
-        on T : | free(ts,addr)
-        $$
-            if(ts==nextts)
-            {
-                $yield free(T.threadid, ts, addr);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
-            }
-            else if(ts>nextts)
-            {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | fork(ts,tid)
         $$
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("fork! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVFORK, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield fork(T.threadid, ts, tid);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.fork.tid=tid;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | join(ts,tid)
         $$
-            if(ts==nextts)
+            #ifdef DEBUGPRINT
+            printf("join! %lu/%lu/%i\n",ts,evbufend,$T.threadid;);
+            #endif
+            $T.curts;=ts;
+            $T.nonecount;=0;
+            GEvent *ev=0;
+            int req=evbuf_request(ts, &ev, EVJOIN, $T.threadid;, &$T.skipping;);
+            if(ev!=0)
             {
-                $yield join(T.threadid, ts, tid);
-                $drop 1 from T;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
+                ev->data.join.tid=tid;
             }
-            else if(ts>nextts)
+            if(req<3)
             {
-                $T.nextts;=ts;
-                leastts=min(leastts, ts);
-            }
-            else
-            {
+                if(req>=2)
+                {
+                    evbuf_process(0);
+                }
                 $drop 1 from T;
             }
         $$
         on T : | my_hole(n, mints, maxts)
         $$
             #ifdef DEBUGPRINT
-            printf("\033[36m//[a] my_hole(n=%d, mints=%lu, maxts=%lu)\033[0m\n", n, mints, maxts);
+            printf("\033[36m//[a] my_hole(n=%d, mints=%lu, maxts=%lu, tid=%i)\033[0m\n", n, mints, maxts,$T.threadid;);
             #endif
-            if(mints<=nextts&&maxts>$T.nextts;)
+            if(!$T.inhole;)
             {
+                $T.curts;=mints;
+                $T.nonecount;=0;
                 skipcount+=n;
                 dropcount+=n;
-                $yield skipstart(T.threadid, nextts);
-                $T.nextts;=maxts;
-                leastts=maxts;
-                findleast=1; //to avoid geting stuck on just this leastts
-                if(maxts<=nextts)
+                holescount++;
+                $T.inhole;=1;
+                if(!$T.skipping;)
                 {
-                    $yield skipend(T.threadid, nextts);
+                    GEvent *ev=0;
+                    int req=evbuf_request(mints, &ev, EVSKIPSTART, $T.threadid;, &$T.skipping;);
+                    if(req<3)
+                    {
+                        if(req>=2)
+                        {
+                            evbuf_process(0);
+                        }
+                        $T.skipping;=1;
+                    }
+                }
+            }
+            if($T.inhole;)
+            {
+                $T.curts;=maxts;
+                $T.nonecount;=0;
+                GEvent *ev=0;
+                int req=evbuf_request(maxts, &ev, EVSKIPEND, $T.threadid;, &$T.skipping;);
+                if(ev!=0)
+                {
+                    ev->skipend=0;//no doubling
+                }
+                if(req<3)
+                {
+                    if(req>=2)
+                    {
+                        evbuf_process(0);
+                    }
+                    $T.inhole;=0;
                     $drop 1 from T;
-        	        ++holescount;
-                    leastts=ULLONG_MAX;
-                    findleast=0;
                 }
-                if(mints==nextts)
-                {
-                    nextts++;
-                }
-            }
-            else if(maxts==nextts)
-            {
-                $yield skipend(T.threadid, maxts);
-                $drop 1 from T;
-                ++holescount;
-                nextts++;
-                leastts=ULLONG_MAX;
-                findleast=0;
-            }
-            else if($T.nextts;<maxts)
-            {
-                $T.nextts;=mints;
-                leastts=min(leastts, mints);
-            }
-            else
-            {
-                leastts=min(leastts, maxts);
             }
         $$
         on T : done
         $$
-            $yield done_(T.threadid, nextts);
+            #ifdef DEBUGPRINT
+            printf("done! %lu/%i\n",evbufend,$T.threadid;);
+            #endif
+            ThrdList * tl = (ThrdList*) malloc(sizeof(ThrdList));
+            tl->tid=$T.threadid;;
+            tl->skipping=$T.skipping;;
+            tl->next=doneThreads;
+            doneThreads=tl;
+            if(BG_Threads.size==1)
+            {
+                evbuf_process(1);
+            }
             $remove T from Threads;
         $$
         on T : nothing
         $$
-            if(leastts!=ULONG_MAX && skipcount >= leastts - nextts)
-            {
-                if($T.nonets;<nextts)
-                {
-                    $T.nonecount;=0;
-                    $T.nonets;=nextts;
-                }
-                $T.nonecount;+=1;
-                seenNone=1;
-            }
+            $T.nonets;=evbufstart+evbufpos+1;
+        $$
+    }
+    choose T from Threads where $$ $T.curts;<evbufend && $T.nonets;>0 $$
+    {
+        on T : 1
+        $$
+            $T.nonets;=0;
         $$
     }
 
     always
     $$
-        if(leastts!=ULONG_MAX && (seenNone==0 || nonecycles>1000000) && skipcount >= leastts - nextts)
+        #ifdef DEBUGPRINT
+        printf("%lu > %lu | %lu/%lu | %li / %li\n", maxts, evbufstart, nonecycles, nonebarrier, evbuffree, skipcount);
+        #endif
+        if(maxts>evbufstart)
         {
-            skipcount-=(leastts-nextts);
-            nextts=leastts;
-            nonebarrier=1;
-            nonecycles=0;
-        }
-        else if(leastts==ULONG_MAX)
-        {
-            findleast=1;
+            nonecycles++;
+            nonebarrier++;
+            if(nonecycles>100000&&skipcount>0&&evbuffree-skipcount<=0)
+            {
+                skipcount-=evbuffree;
+                evbuf_process(1);
+            }
         }
         else
-        {                
+        {
             nonebarrier++;
-            nonecycles++;
         }
-        seenNone=0;
     $$
 }
 
@@ -412,6 +609,7 @@ monitor {
         printf("read(tid=%lu, ts=%lu, addr=%p)\n", tid, timestamp, addr);
         #endif
         monitor_handle_read(tid, timestamp, addr);
+        handledcount++;
     $$
     on read_sized(tid, timestamp, addr, size) where $$ true $$
     $$
@@ -419,6 +617,7 @@ monitor {
         printf("read_sized(tid=%lu, ts=%lu, addr=%p, size=%lu)\n", tid, timestamp, addr, size);
         #endif
         monitor_handle_read_many(tid, timestamp, addr, size);
+        handledcount++;
     $$
 
     on write(tid, timestamp, addr) where $$ true $$
@@ -427,6 +626,7 @@ monitor {
         printf("write(tid=%lu, ts=%lu, addr=%p)\n", tid, timestamp, addr);
         #endif
         monitor_handle_write(tid, timestamp, addr);
+        handledcount++;
     $$
     on write_sized(tid, timestamp, addr, size) where $$ true $$
     $$
@@ -434,20 +634,7 @@ monitor {
         printf("write_sized(tid=%lu, ts=%lu, addr=%li, size=%lu)\n", tid, timestamp, addr,size);
         #endif
         monitor_handle_write_many(tid, timestamp, addr, size);
-    $$
-
-    on atomicread(tid, timestamp, addr , mode) where $$ true $$
-    $$
-        #ifdef DEBUGPRINT
-        printf("atomicread(tid=%lu, ts=%lu, addr=%p)\n", tid, timestamp, addr);
-        #endif
-    $$
-
-    on atomicwrite(tid, timestamp, addr , mode) where $$ true $$
-    $$
-        #ifdef DEBUGPRINT
-        printf("atomicwrite(tid=%lu, ts=%lu, addr=%p)\n", tid, timestamp, addr);
-        #endif
+        handledcount++;
     $$
 
     on lock(tid, timestamp, addr) where $$ true $$
@@ -456,6 +643,7 @@ monitor {
         printf("lock(tid=%lu, ts=%lu, addr=%p)\n", tid, timestamp, addr);
         #endif
         monitor_handle_lock(tid, timestamp, addr);
+        handledcount++;
     $$
 
     on unlock(tid, timestamp, addr) where $$ true $$
@@ -464,25 +652,7 @@ monitor {
         printf("unlock(tid=%lu, ts=%lu, addr=%p)\n", tid, timestamp, addr);
         #endif
         monitor_handle_unlock(tid, timestamp, addr);
-    $$
-
-
-
-
-
-    on alloc(tid, timestamp , addr, size) where $$ true $$
-    $$ 
-        #ifdef DEBUGPRINT
-        printf("ALLOC\n");
-        #endif
-        monitor_handle_alloc(tid, timestamp, addr, size);
-    $$
-    on free(tid, timestamp, addr ) where $$ true $$
-    $$ 
-        #ifdef DEBUGPRINT
-        printf("FREE\n");
-        #endif
-        monitor_handle_free(tid, timestamp, addr);
+        handledcount++;
     $$
     on fork(tid, timestamp, newthreadid) where $$ true $$
     $$
@@ -490,6 +660,7 @@ monitor {
         printf("fork(tid=%lu, ts=%lu, newtid=%lu\n", tid, timestamp, newthreadid);
         #endif
         monitor_handle_fork(tid, timestamp, newthreadid);
+        handledcount++;
     $$
     on join(tid, timestamp, threadid) where $$ true $$
     $$
@@ -497,6 +668,7 @@ monitor {
         printf("join(tid=%lu, ts=%lu, jointid=%lu\n", tid, timestamp, threadid);
         #endif
         monitor_handle_join(tid, timestamp, threadid);
+        handledcount++;
     $$
     on skipstart(tid, timestamp) where $$ true $$
     $$
@@ -504,6 +676,7 @@ monitor {
         printf("skipstart(tid=%lu, ts=%lu)\n", tid, timestamp);
         #endif
         monitor_handle_skip_start(tid, timestamp);
+        handledcount++;
     $$
     on skipend(tid, timestamp) where $$ true $$
     $$
@@ -511,6 +684,7 @@ monitor {
         printf("skipend(tid=%lu, ts=%lu)\n", tid, timestamp);
         #endif
         monitor_handle_skip_end(tid, timestamp);
+        handledcount++;
     $$
     on done_(tid, timestamp) where $$ true $$
     $$
