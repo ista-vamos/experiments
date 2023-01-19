@@ -19,8 +19,8 @@ stream processor TEProcessor(threadid : int) : ThreadEvent(threadid, 0, 0, 0, 0,
     my_hole
     {
         int n = COUNT(*);
-        uint64_t firstts = MIN(read.timestamp, write.timestamp, atomicread.timestamp, atomicwrite.timestamp, lock.timestamp, unlock.timestamp, alloc.timestamp, free.timestamp, fork.timestamp, join.timestamp);
-        uint64_t lastts = MAX(read.timestamp, write.timestamp, atomicread.timestamp, atomicwrite.timestamp, lock.timestamp, unlock.timestamp, alloc.timestamp, free.timestamp, fork.timestamp, join.timestamp);
+        uint64_t firstts = MIN(read.timestamp, write.timestamp, read_n.timestamp, write_n.timestamp, atomicread.timestamp, atomicwrite.timestamp, lock.timestamp, unlock.timestamp, alloc.timestamp, free.timestamp, fork.timestamp, join.timestamp);
+        uint64_t lastts = MAX(read.timestamp, write.timestamp, read_n.timestamp, write_n.timestamp, atomicread.timestamp, atomicwrite.timestamp, lock.timestamp, unlock.timestamp, alloc.timestamp, free.timestamp, fork.timestamp, join.timestamp);
     }
 }
 
