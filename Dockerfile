@@ -45,7 +45,9 @@ RUN apt-get install -y --no-install-recommends clang-14 llvm-14-dev &&\
 # clone VAMOS
 FROM llvm AS vamos
 WORKDIR /opt
-RUN git clone --depth=1 https://github.com/ista-vamos/vamos -b fase23
+#RUN git clone --depth=1 https://github.com/ista-vamos/vamos -b sttt
+RUN pip install lark
+RUN git clone --depth=2 https://github.com/ista-vamos/vamos -b dev
 #compile VAMOS
 WORKDIR /opt/vamos
 COPY --from=dynamorio /opt/dynamorio/build /opt/dynamorio/build

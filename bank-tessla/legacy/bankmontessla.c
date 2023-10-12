@@ -70,7 +70,7 @@ typedef struct _EVENT_numOut EVENT_numOut;
 
 // input stream for stream type BankOutputEvent
 struct _STREAM_BankOutputEvent_in {
-    shm_event head;
+    vms_event head;
     union {
         EVENT_depositTo       depositTo;
         EVENT_withdraw        withdraw;
@@ -90,7 +90,7 @@ typedef struct _STREAM_BankOutputEvent_in STREAM_BankOutputEvent_in;
 
 // output stream for stream type BankOutputEvent
 struct _STREAM_BankOutputEvent_out {
-    shm_event head;
+    vms_event head;
     union {
         EVENT_hole            hole;
         EVENT_depositTo       depositTo;
@@ -121,7 +121,7 @@ typedef struct _EVENT_otherIn EVENT_otherIn;
 
 // input stream for stream type BankInputEvent
 struct _STREAM_BankInputEvent_in {
-    shm_event head;
+    vms_event head;
     union {
         EVENT_numIn   numIn;
         EVENT_otherIn otherIn;
@@ -131,7 +131,7 @@ typedef struct _STREAM_BankInputEvent_in STREAM_BankInputEvent_in;
 
 // output stream for stream type BankInputEvent
 struct _STREAM_BankInputEvent_out {
-    shm_event head;
+    vms_event head;
     union {
         EVENT_hole    hole;
         EVENT_numIn   numIn;
@@ -168,7 +168,7 @@ typedef struct _EVENT_monreset EVENT_monreset;
 
 // input stream for stream type BankEvent
 struct _STREAM_BankEvent_in {
-    shm_event head;
+    vms_event head;
     union {
         EVENT_monbalance  monbalance;
         EVENT_mondeposit  mondeposit;
@@ -181,7 +181,7 @@ typedef struct _STREAM_BankEvent_in STREAM_BankEvent_in;
 
 // output stream for stream type BankEvent
 struct _STREAM_BankEvent_out {
-    shm_event head;
+    vms_event head;
     union {
         EVENT_hole        hole;
         EVENT_monbalance  monbalance;
@@ -224,7 +224,7 @@ extern void *moninit();
 
 int *arbiter_counter;
 // monitor buffer
-shm_monitor_buffer *monitor_buffer;
+vms_monitor_buffer *monitor_buffer;
 
 bool       is_selection_successful;
 dll_node **chosen_streams; // used in rule set for get_first/last_n
@@ -242,18 +242,18 @@ int    in_holes      = 0;
 int    out_holes     = 0;
 int    errors        = 0;
 
-bool SHOULD_KEEP_In(shm_stream *s, shm_event *e) {
+bool SHOULD_KEEP_In(vms_stream *s, vms_event *e) {
     return true;
 }
-bool SHOULD_KEEP_Out(shm_stream *s, shm_event *e) {
+bool SHOULD_KEEP_Out(vms_stream *s, vms_event *e) {
     return true;
 }
 
 atomic_int count_event_streams = 2;
 
 // declare event streams
-shm_stream *EV_SOURCE_In;
-shm_stream *EV_SOURCE_Out;
+vms_stream *EV_SOURCE_In;
+vms_stream *EV_SOURCE_Out;
 
 // event sources threads
 thrd_t THREAD_In;
@@ -272,20 +272,20 @@ static size_t RULE_SET_working_nomatch_cnt  = 0;
 int current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
 // Arbiter buffer for event source In
-shm_arbiter_buffer *BUFFER_In;
+vms_arbiter_buffer *BUFFER_In;
 
 // Arbiter buffer for event source Out
-shm_arbiter_buffer *BUFFER_Out;
+vms_arbiter_buffer *BUFFER_Out;
 
 // buffer groups
 
-int PERF_LAYER_In(shm_arbiter_buffer *buffer) {
-    shm_stream                *stream = shm_arbiter_buffer_stream(buffer);
+int PERF_LAYER_In(vms_arbiter_buffer *buffer) {
+    vms_stream                *stream = vms_arbiter_buffer_stream(buffer);
     STREAM_BankInputEvent_in  *inevent;
     STREAM_BankInputEvent_out *outevent;
 
     // wait for active buffer
-    while ((!shm_arbiter_buffer_active(buffer))) {
+    while ((!vms_arbiter_buffer_active(buffer))) {
         sleep_ns(10);
     }
     while (true) {
@@ -295,21 +295,21 @@ int PERF_LAYER_In(shm_arbiter_buffer *buffer) {
             // no more events
             break;
         }
-        outevent = shm_arbiter_buffer_write_ptr(buffer);
+        outevent = vms_arbiter_buffer_write_ptr(buffer);
 
         memcpy(outevent, inevent, sizeof(STREAM_BankInputEvent_out));
-        shm_arbiter_buffer_write_finish(buffer);
-        shm_stream_consume(stream, 1);
+        vms_arbiter_buffer_write_finish(buffer);
+        vms_stream_consume(stream, 1);
     }
     atomic_fetch_add(&count_event_streams, -1);
 }
-int PERF_LAYER_Out(shm_arbiter_buffer *buffer) {
-    shm_stream                 *stream = shm_arbiter_buffer_stream(buffer);
+int PERF_LAYER_Out(vms_arbiter_buffer *buffer) {
+    vms_stream                 *stream = vms_arbiter_buffer_stream(buffer);
     STREAM_BankOutputEvent_in  *inevent;
     STREAM_BankOutputEvent_out *outevent;
 
     // wait for active buffer
-    while ((!shm_arbiter_buffer_active(buffer))) {
+    while ((!vms_arbiter_buffer_active(buffer))) {
         sleep_ns(10);
     }
     while (true) {
@@ -319,11 +319,11 @@ int PERF_LAYER_Out(shm_arbiter_buffer *buffer) {
             // no more events
             break;
         }
-        outevent = shm_arbiter_buffer_write_ptr(buffer);
+        outevent = vms_arbiter_buffer_write_ptr(buffer);
 
         memcpy(outevent, inevent, sizeof(STREAM_BankOutputEvent_out));
-        shm_arbiter_buffer_write_finish(buffer);
-        shm_stream_consume(stream, 1);
+        vms_arbiter_buffer_write_finish(buffer);
+        vms_stream_consume(stream, 1);
     }
     atomic_fetch_add(&count_event_streams, -1);
 }
@@ -332,8 +332,8 @@ int PERF_LAYER_Out(shm_arbiter_buffer *buffer) {
 long unsigned no_consecutive_matches_limit = 1UL << 35;
 int           no_matches_count             = 0;
 
-bool are_there_events(shm_arbiter_buffer *b) {
-    return shm_arbiter_buffer_size(b) > 0;
+bool are_there_events(vms_arbiter_buffer *b) {
+    return vms_arbiter_buffer_size(b) > 0;
 }
 
 bool are_buffers_empty() {
@@ -355,12 +355,12 @@ static inline bool are_streams_done() {
     return count_event_streams == 0 && are_buffers_empty() || __work_done;
 }
 
-static inline bool is_stream_done(shm_stream *s) {
-    return !shm_stream_is_ready(s);
+static inline bool is_stream_done(vms_stream *s) {
+    return !vms_stream_is_ready(s);
 }
 
 static inline bool check_at_least_n_events(size_t count, size_t n) {
-    // count is the result after calling shm_arbiter_buffer_peek
+    // count is the result after calling vms_arbiter_buffer_peek
     return count >= n;
 }
 
@@ -374,7 +374,7 @@ static bool are_events_in_head(char *e1, size_t i1, char *e2, size_t i2,
 
     int i = 0;
     while (i < i1) {
-        shm_event *ev = (shm_event *)(e1);
+        vms_event *ev = (vms_event *)(e1);
         if (ev->kind != event_kinds[i]) {
             return false;
         }
@@ -386,7 +386,7 @@ static bool are_events_in_head(char *e1, size_t i1, char *e2, size_t i2,
 
     i = 0;
     while (i < i2) {
-        shm_event *ev = (shm_event *)e2;
+        vms_event *ev = (vms_event *)e2;
         if (ev->kind != event_kinds[i1 + i]) {
             return false;
         }
@@ -399,19 +399,19 @@ static bool are_events_in_head(char *e1, size_t i1, char *e2, size_t i2,
     return true;
 }
 
-static void print_buffer_prefix(shm_arbiter_buffer *b, size_t n_events, int cnt,
+static void print_buffer_prefix(vms_arbiter_buffer *b, size_t n_events, int cnt,
                                 char *e1, size_t i1, char *e2, size_t i2) {
     if (cnt == 0) {
         fprintf(stderr, " empty\n");
         return;
     }
-    const size_t ev_size = shm_arbiter_buffer_elem_size(b);
+    const size_t ev_size = vms_arbiter_buffer_elem_size(b);
     int          n       = 0;
     int          i       = 0;
     while (i < i1) {
-        shm_event *ev = (shm_event *)(e1);
-        fprintf(stderr, "  %d: {id: %lu, kind: %lu}\n", ++n, shm_event_id(ev),
-                shm_event_kind(ev));
+        vms_event *ev = (vms_event *)(e1);
+        fprintf(stderr, "  %d: {id: %lu, kind: %lu}\n", ++n, vms_event_id(ev),
+                vms_event_kind(ev));
         if (--n_events == 0)
             return;
         i += 1;
@@ -420,9 +420,9 @@ static void print_buffer_prefix(shm_arbiter_buffer *b, size_t n_events, int cnt,
 
     i = 0;
     while (i < i2) {
-        shm_event *ev = (shm_event *)e2;
-        fprintf(stderr, "  %d: {id: %lu, kind: %lu}\n", ++n, shm_event_id(ev),
-                shm_event_kind(ev));
+        vms_event *ev = (vms_event *)e2;
+        fprintf(stderr, "  %d: {id: %lu, kind: %lu}\n", ++n, vms_event_id(ev),
+                vms_event_kind(ev));
         if (--n_events == 0)
             return;
         i += 1;
@@ -430,14 +430,14 @@ static void print_buffer_prefix(shm_arbiter_buffer *b, size_t n_events, int cnt,
     }
 }
 
-static inline shm_event *get_event_at_index(char *e1, size_t i1, char *e2,
+static inline vms_event *get_event_at_index(char *e1, size_t i1, char *e2,
                                             size_t i2, size_t size_event,
                                             int element_index) {
     if (element_index < i1) {
-        return (shm_event *)(e1 + (element_index * size_event));
+        return (vms_event *)(e1 + (element_index * size_event));
     } else {
         element_index -= i1;
-        return (shm_event *)(e2 + (element_index * size_event));
+        return (vms_event *)(e2 + (element_index * size_event));
     }
 }
 
@@ -553,17 +553,17 @@ void print_event_name(int ev_src_index, int event_index) {
     printf("Invalid event source! this should not happen, please report!\n");
 }
 
-int get_event_at_head(shm_arbiter_buffer *b) {
+int get_event_at_head(vms_arbiter_buffer *b) {
     void  *e1;
     size_t i1;
     void  *e2;
     size_t i2;
 
-    int count = shm_arbiter_buffer_peek(b, 0, &e1, &i1, &e2, &i2);
+    int count = vms_arbiter_buffer_peek(b, 0, &e1, &i1, &e2, &i2);
     if (count == 0) {
         return -1;
     }
-    shm_event *ev = (shm_event *)(e1);
+    vms_event *ev = (vms_event *)(e1);
     return ev->kind;
 }
 
@@ -582,7 +582,7 @@ int RULE_SET_aligning() {
     size_t i1_Out;
     char  *e2_Out;
     size_t i2_Out;
-    int    count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 1, (void **)&e1_Out,
+    int    count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 1, (void **)&e1_Out,
                                                &i1_Out, (void **)&e2_Out, &i2_Out);
 
     int TEMPARR0[] = {BANKOUTPUTEVENT_HOLE};
@@ -599,17 +599,17 @@ int RULE_SET_aligning() {
         if (true) {
 
             arbiter_outevent =
-                (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                     monitor_buffer);
             arbiter_outevent->head.kind = 6;
             arbiter_outevent->head.id   = (*arbiter_counter)++;
 
-            shm_monitor_buffer_write_finish(monitor_buffer);
+            vms_monitor_buffer_write_finish(monitor_buffer);
 
             ++out_holes;
             ++out_processed;
 
-            shm_arbiter_buffer_drop(BUFFER_Out, 1);
+            vms_arbiter_buffer_drop(BUFFER_Out, 1);
 
             return 1;
         }
@@ -727,7 +727,7 @@ int RULE_SET_aligning() {
 
             ++out_processed;
 
-            shm_arbiter_buffer_drop(BUFFER_Out, 1);
+            vms_arbiter_buffer_drop(BUFFER_Out, 1);
 
             return 1;
         }
@@ -749,7 +749,7 @@ int RULE_SET_aligning() {
     }
     if (ok == 0) {
         fprintf(stderr, "Prefix of 'Out':\n");
-        count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
+        count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
                                             &e2_Out, &i2_Out);
         print_buffer_prefix(BUFFER_Out, i1_Out + i2_Out, count_Out, e1_Out,
                             i1_Out, e2_Out, i2_Out);
@@ -762,7 +762,7 @@ int RULE_SET_aligning() {
         fprintf(stderr, "\033[31mRule set 'aligning' cycles long time without "
                         "progress\033[0m\n");
         fprintf(stderr, "Prefix of 'Out':\n");
-        count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
+        count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
                                             &e2_Out, &i2_Out);
         print_buffer_prefix(BUFFER_Out, i1_Out + i2_Out, count_Out, e1_Out,
                             i1_Out, e2_Out, i2_Out);
@@ -776,13 +776,13 @@ int RULE_SET_align_in() {
     size_t i1_Out;
     char  *e2_Out;
     size_t i2_Out;
-    int    count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 1, (void **)&e1_Out,
+    int    count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 1, (void **)&e1_Out,
                                                &i1_Out, (void **)&e2_Out, &i2_Out);
     char  *e1_In;
     size_t i1_In;
     char  *e2_In;
     size_t i2_In;
-    int    count_In = shm_arbiter_buffer_peek(BUFFER_In, 1, (void **)&e1_In,
+    int    count_In = vms_arbiter_buffer_peek(BUFFER_In, 1, (void **)&e1_In,
                                               &i1_In, (void **)&e2_In, &i2_In);
 
     int TEMPARR5[] = {BANKOUTPUTEVENT_BALANCE};
@@ -828,14 +828,14 @@ int RULE_SET_align_in() {
                 } else if (tout > tin) {
                     ++in_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_In, 1);
+                    vms_arbiter_buffer_drop(BUFFER_In, 1);
                 } else {
                     /* the event is incomplete, there must have been some hole,
                        try once more */
                     assert(in_holes > 0);
                     ++out_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_Out, 1);
+                    vms_arbiter_buffer_drop(BUFFER_Out, 1);
                     current_rule_set = SWITCH_TO_RULE_SET_aligning;
                 }
 
@@ -887,14 +887,14 @@ int RULE_SET_align_in() {
                 } else if (tout > tin) {
                     ++in_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_In, 1);
+                    vms_arbiter_buffer_drop(BUFFER_In, 1);
                 } else {
                     /* the event is incomplete, there must have been some hole,
                        try once more */
                     assert(in_holes > 0);
                     ++out_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_Out, 1);
+                    vms_arbiter_buffer_drop(BUFFER_Out, 1);
                     current_rule_set = SWITCH_TO_RULE_SET_aligning;
                 }
 
@@ -946,14 +946,14 @@ int RULE_SET_align_in() {
                 } else if (tout > tin) {
                     ++in_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_In, 1);
+                    vms_arbiter_buffer_drop(BUFFER_In, 1);
                 } else {
                     /* the event is incomplete, there must have been some hole,
                        try once more */
                     assert(in_holes > 0);
                     ++out_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_Out, 1);
+                    vms_arbiter_buffer_drop(BUFFER_Out, 1);
                     current_rule_set = SWITCH_TO_RULE_SET_aligning;
                 }
 
@@ -1011,14 +1011,14 @@ int RULE_SET_align_in() {
                 } else if (tout > tin + 4) {
                     ++in_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_In, 1);
+                    vms_arbiter_buffer_drop(BUFFER_In, 1);
                 } else {
                     /* the event is incomplete, there must have been some hole,
                        try once more */
                     assert(in_holes > 0);
                     ++out_processed;
 
-                    shm_arbiter_buffer_drop(BUFFER_Out, 1);
+                    vms_arbiter_buffer_drop(BUFFER_Out, 1);
                     current_rule_set = SWITCH_TO_RULE_SET_aligning;
                 }
 
@@ -1208,17 +1208,17 @@ int RULE_SET_align_in() {
             if (true) {
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 6;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
 
                 ++in_holes;
                 ++in_processed;
 
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -1241,7 +1241,7 @@ int RULE_SET_align_in() {
 
             if (true) {
 
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -1255,7 +1255,7 @@ int RULE_SET_align_in() {
 
                 ++in_processed;
 
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -1269,7 +1269,7 @@ int RULE_SET_align_in() {
 
                 ++out_processed;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 1);
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
                 return 1;
@@ -1284,12 +1284,12 @@ int RULE_SET_align_in() {
     }
     if (ok == 0) {
         fprintf(stderr, "Prefix of 'Out':\n");
-        count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
+        count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
                                             &e2_Out, &i2_Out);
         print_buffer_prefix(BUFFER_Out, i1_Out + i2_Out, count_Out, e1_Out,
                             i1_Out, e2_Out, i2_Out);
         fprintf(stderr, "Prefix of 'In':\n");
-        count_In = shm_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
+        count_In = vms_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
                                            &i2_In);
         print_buffer_prefix(BUFFER_In, i1_In + i2_In, count_In, e1_In, i1_In,
                             e2_In, i2_In);
@@ -1302,12 +1302,12 @@ int RULE_SET_align_in() {
         fprintf(stderr, "\033[31mRule set 'align_in' cycles long time without "
                         "progress\033[0m\n");
         fprintf(stderr, "Prefix of 'Out':\n");
-        count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
+        count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
                                             &e2_Out, &i2_Out);
         print_buffer_prefix(BUFFER_Out, i1_Out + i2_Out, count_Out, e1_Out,
                             i1_Out, e2_Out, i2_Out);
         fprintf(stderr, "Prefix of 'In':\n");
-        count_In = shm_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
+        count_In = vms_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
                                            &i2_In);
         print_buffer_prefix(BUFFER_In, i1_In + i2_In, count_In, e1_In, i1_In,
                             e2_In, i2_In);
@@ -1321,13 +1321,13 @@ int RULE_SET_working() {
     size_t i1_Out;
     char  *e2_Out;
     size_t i2_Out;
-    int    count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 2, (void **)&e1_Out,
+    int    count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 2, (void **)&e1_Out,
                                                &i1_Out, (void **)&e2_Out, &i2_Out);
     char  *e1_In;
     size_t i1_In;
     char  *e2_In;
     size_t i2_In;
-    int    count_In = shm_arbiter_buffer_peek(BUFFER_In, 3, (void **)&e1_In,
+    int    count_In = vms_arbiter_buffer_peek(BUFFER_In, 3, (void **)&e1_In,
                                               &i1_In, (void **)&e2_In, &i2_In);
 
     int TEMPARR23[] = {BANKOUTPUTEVENT_TRANSFER,
@@ -1407,7 +1407,7 @@ int RULE_SET_working() {
                 assert(action == 4);
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 5;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
@@ -1420,14 +1420,14 @@ int RULE_SET_working() {
                 ((STREAM_BankEvent_out *)arbiter_outevent)
                     ->cases.montransfer.success = true;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
                 out_processed += 2;
                 in_processed += 3;
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 3);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 3);
 
                 return 1;
             }
@@ -1471,12 +1471,12 @@ int RULE_SET_working() {
                 in_processed += 2;
                 out_processed += 2;
 
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
                 /* drop the number */
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
 
                 return 1;
             }
@@ -1560,7 +1560,7 @@ int RULE_SET_working() {
                 assert(action == 4);
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 5;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
@@ -1573,14 +1573,14 @@ int RULE_SET_working() {
                 ((STREAM_BankEvent_out *)arbiter_outevent)
                     ->cases.montransfer.success = false;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
                 out_processed += 2;
                 in_processed += 3;
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 3);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 3);
 
                 return 1;
             }
@@ -1630,12 +1630,12 @@ int RULE_SET_working() {
                 in_processed += 2;
                 out_processed += 2;
 
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
                 /* drop the number */
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
 
                 return 1;
             }
@@ -1677,7 +1677,7 @@ int RULE_SET_working() {
 
             current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-            shm_arbiter_buffer_drop(BUFFER_Out, 1);
+            vms_arbiter_buffer_drop(BUFFER_Out, 1);
 
             return 1;
         }
@@ -1735,8 +1735,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 1);
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -1795,8 +1795,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 1);
-                shm_arbiter_buffer_drop(BUFFER_In, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 1);
+                vms_arbiter_buffer_drop(BUFFER_In, 2);
 
                 return 1;
             }
@@ -1854,7 +1854,7 @@ int RULE_SET_working() {
                 assert(action == 3);
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 2;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
@@ -1863,14 +1863,14 @@ int RULE_SET_working() {
                 ((STREAM_BankEvent_out *)arbiter_outevent)
                     ->cases.monbalance.balance = amnt;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
                 out_processed += 2;
                 ++in_processed;
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -1906,7 +1906,7 @@ int RULE_SET_working() {
 
             current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-            shm_arbiter_buffer_drop(BUFFER_Out, 1);
+            vms_arbiter_buffer_drop(BUFFER_Out, 1);
 
             return 1;
         }
@@ -1972,7 +1972,7 @@ int RULE_SET_working() {
                 assert(t3 == t2 + 1);
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 3;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
@@ -1981,14 +1981,14 @@ int RULE_SET_working() {
                 ((STREAM_BankEvent_out *)arbiter_outevent)
                     ->cases.mondeposit.amount = amnt;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
                 out_processed += 2;
                 in_processed += 2;
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 2);
 
                 return 1;
             }
@@ -2055,8 +2055,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 2);
 
                 return 1;
             }
@@ -2117,8 +2117,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -2180,8 +2180,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -2217,7 +2217,7 @@ int RULE_SET_working() {
 
             current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-            shm_arbiter_buffer_drop(BUFFER_Out, 1);
+            vms_arbiter_buffer_drop(BUFFER_Out, 1);
 
             return 1;
         }
@@ -2281,7 +2281,7 @@ int RULE_SET_working() {
                 assert(act == 2);
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 4;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
@@ -2292,14 +2292,14 @@ int RULE_SET_working() {
                 ((STREAM_BankEvent_out *)arbiter_outevent)
                     ->cases.monwithdraw.success = true;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
                 out_processed += 2;
                 in_processed += 2;
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 2);
 
                 return 1;
             }
@@ -2363,7 +2363,7 @@ int RULE_SET_working() {
                 assert(act == 2);
 
                 arbiter_outevent =
-                    (STREAM_BankEvent_out *)shm_monitor_buffer_write_ptr(
+                    (STREAM_BankEvent_out *)vms_monitor_buffer_write_ptr(
                         monitor_buffer);
                 arbiter_outevent->head.kind = 4;
                 arbiter_outevent->head.id   = (*arbiter_counter)++;
@@ -2374,14 +2374,14 @@ int RULE_SET_working() {
                 ((STREAM_BankEvent_out *)arbiter_outevent)
                     ->cases.monwithdraw.success = false;
 
-                shm_monitor_buffer_write_finish(monitor_buffer);
+                vms_monitor_buffer_write_finish(monitor_buffer);
                 out_processed += 2;
                 in_processed += 2;
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 2);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 2);
 
                 return 1;
             }
@@ -2442,8 +2442,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -2503,8 +2503,8 @@ int RULE_SET_working() {
 
                 current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-                shm_arbiter_buffer_drop(BUFFER_Out, 2);
-                shm_arbiter_buffer_drop(BUFFER_In, 1);
+                vms_arbiter_buffer_drop(BUFFER_Out, 2);
+                vms_arbiter_buffer_drop(BUFFER_In, 1);
 
                 return 1;
             }
@@ -2540,7 +2540,7 @@ int RULE_SET_working() {
 
             current_rule_set = SWITCH_TO_RULE_SET_aligning;
 
-            shm_arbiter_buffer_drop(BUFFER_Out, 1);
+            vms_arbiter_buffer_drop(BUFFER_Out, 1);
 
             return 1;
         }
@@ -2574,12 +2574,12 @@ int RULE_SET_working() {
     }
     if (ok == 0) {
         fprintf(stderr, "Prefix of 'Out':\n");
-        count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
+        count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
                                             &e2_Out, &i2_Out);
         print_buffer_prefix(BUFFER_Out, i1_Out + i2_Out, count_Out, e1_Out,
                             i1_Out, e2_Out, i2_Out);
         fprintf(stderr, "Prefix of 'In':\n");
-        count_In = shm_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
+        count_In = vms_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
                                            &i2_In);
         print_buffer_prefix(BUFFER_In, i1_In + i2_In, count_In, e1_In, i1_In,
                             e2_In, i2_In);
@@ -2592,12 +2592,12 @@ int RULE_SET_working() {
         fprintf(stderr, "\033[31mRule set 'working' cycles long time without "
                         "progress\033[0m\n");
         fprintf(stderr, "Prefix of 'Out':\n");
-        count_Out = shm_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
+        count_Out = vms_arbiter_buffer_peek(BUFFER_Out, 5, &e1_Out, &i1_Out,
                                             &e2_Out, &i2_Out);
         print_buffer_prefix(BUFFER_Out, i1_Out + i2_Out, count_Out, e1_Out,
                             i1_Out, e2_Out, i2_Out);
         fprintf(stderr, "Prefix of 'In':\n");
-        count_In = shm_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
+        count_In = vms_arbiter_buffer_peek(BUFFER_In, 5, &e1_In, &i1_In, &e2_In,
                                            &i2_In);
         print_buffer_prefix(BUFFER_In, i1_In + i2_In, count_In, e1_In, i1_In,
                             e2_In, i2_In);
@@ -2646,13 +2646,13 @@ int arbiter() {
             abort();
         }
     }
-    shm_monitor_set_finished(monitor_buffer);
+    vms_monitor_set_finished(monitor_buffer);
 }
 
 static void sig_handler(int sig) {
     printf("signal %d caught...", sig);
-    shm_stream_detach(EV_SOURCE_In);
-    shm_stream_detach(EV_SOURCE_Out);
+    vms_stream_detach(EV_SOURCE_In);
+    vms_stream_detach(EV_SOURCE_Out);
     __work_done = 1;
 }
 
@@ -2686,137 +2686,137 @@ int main(int argc, char **argv) {
     init_intmap(&lower_bounds);
 
     // connect to event source In
-    EV_SOURCE_In = shm_stream_create_from_argv("In", argc, argv);
-    BUFFER_In    = shm_arbiter_buffer_create(
+    EV_SOURCE_In = vms_stream_create_from_argv("In", argc, argv);
+    BUFFER_In    = vms_arbiter_buffer_create(
            EV_SOURCE_In, sizeof(STREAM_BankInputEvent_out), 128);
 
     // register events in In
-    if (shm_stream_register_event(EV_SOURCE_In, "numIn", BANKINPUTEVENT_NUMIN) <
+    if (vms_stream_register_event(EV_SOURCE_In, "numIn", BANKINPUTEVENT_NUMIN) <
         0) {
         fprintf(
             stderr,
             "Failed registering event numIn for stream In : BankInputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_In);
+        vms_stream_dump_events(EV_SOURCE_In);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_In, "otherIn",
+    if (vms_stream_register_event(EV_SOURCE_In, "otherIn",
                                   BANKINPUTEVENT_OTHERIN) < 0) {
         fprintf(stderr, "Failed registering event otherIn for stream In : "
                         "BankInputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_In);
+        vms_stream_dump_events(EV_SOURCE_In);
         abort();
     }
     // connect to event source Out
-    EV_SOURCE_Out = shm_stream_create_from_argv("Out", argc, argv);
-    BUFFER_Out    = shm_arbiter_buffer_create(
+    EV_SOURCE_Out = vms_stream_create_from_argv("Out", argc, argv);
+    BUFFER_Out    = vms_arbiter_buffer_create(
            EV_SOURCE_Out, sizeof(STREAM_BankOutputEvent_out), 128);
 
     // register events in Out
-    if (shm_stream_register_event(EV_SOURCE_Out, "balance",
+    if (vms_stream_register_event(EV_SOURCE_Out, "balance",
                                   BANKOUTPUTEVENT_BALANCE) < 0) {
         fprintf(stderr, "Failed registering event balance for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "depositTo",
+    if (vms_stream_register_event(EV_SOURCE_Out, "depositTo",
                                   BANKOUTPUTEVENT_DEPOSITTO) < 0) {
         fprintf(stderr, "Failed registering event depositTo for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "withdraw",
+    if (vms_stream_register_event(EV_SOURCE_Out, "withdraw",
                                   BANKOUTPUTEVENT_WITHDRAW) < 0) {
         fprintf(stderr, "Failed registering event withdraw for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "transfer",
+    if (vms_stream_register_event(EV_SOURCE_Out, "transfer",
                                   BANKOUTPUTEVENT_TRANSFER) < 0) {
         fprintf(stderr, "Failed registering event transfer for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "depositSuccess",
+    if (vms_stream_register_event(EV_SOURCE_Out, "depositSuccess",
                                   BANKOUTPUTEVENT_DEPOSITSUCCESS) < 0) {
         fprintf(stderr, "Failed registering event depositSuccess for stream "
                         "Out : BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "depositFail",
+    if (vms_stream_register_event(EV_SOURCE_Out, "depositFail",
                                   BANKOUTPUTEVENT_DEPOSITFAIL) < 0) {
         fprintf(stderr, "Failed registering event depositFail for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "withdrawSuccess",
+    if (vms_stream_register_event(EV_SOURCE_Out, "withdrawSuccess",
                                   BANKOUTPUTEVENT_WITHDRAWSUCCESS) < 0) {
         fprintf(stderr, "Failed registering event withdrawSuccess for stream "
                         "Out : BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "withdrawFail",
+    if (vms_stream_register_event(EV_SOURCE_Out, "withdrawFail",
                                   BANKOUTPUTEVENT_WITHDRAWFAIL) < 0) {
         fprintf(stderr, "Failed registering event withdrawFail for stream Out "
                         ": BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "transferSuccess",
+    if (vms_stream_register_event(EV_SOURCE_Out, "transferSuccess",
                                   BANKOUTPUTEVENT_TRANSFERSUCCESS) < 0) {
         fprintf(stderr, "Failed registering event transferSuccess for stream "
                         "Out : BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "selectedAccount",
+    if (vms_stream_register_event(EV_SOURCE_Out, "selectedAccount",
                                   BANKOUTPUTEVENT_SELECTEDACCOUNT) < 0) {
         fprintf(stderr, "Failed registering event selectedAccount for stream "
                         "Out : BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "logout",
+    if (vms_stream_register_event(EV_SOURCE_Out, "logout",
                                   BANKOUTPUTEVENT_LOGOUT) < 0) {
         fprintf(stderr, "Failed registering event logout for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
-    if (shm_stream_register_event(EV_SOURCE_Out, "numOut",
+    if (vms_stream_register_event(EV_SOURCE_Out, "numOut",
                                   BANKOUTPUTEVENT_NUMOUT) < 0) {
         fprintf(stderr, "Failed registering event numOut for stream Out : "
                         "BankOutputEvent\n");
         fprintf(stderr, "Available events:\n");
-        shm_stream_dump_events(EV_SOURCE_Out);
+        vms_stream_dump_events(EV_SOURCE_Out);
         abort();
     }
 
     // activate buffers
-    shm_arbiter_buffer_set_active(BUFFER_In, true);
-    shm_arbiter_buffer_set_active(BUFFER_Out, true);
+    vms_arbiter_buffer_set_active(BUFFER_In, true);
+    vms_arbiter_buffer_set_active(BUFFER_Out, true);
 
     monitor_buffer =
-        shm_monitor_buffer_create(sizeof(STREAM_BankEvent_out), 128);
+        vms_monitor_buffer_create(sizeof(STREAM_BankEvent_out), 128);
 
     // init buffer groups
 
@@ -2883,13 +2883,13 @@ int main(int argc, char **argv) {
             }
         }
 
-        shm_monitor_buffer_consume(monitor_buffer, 1);
+        vms_monitor_buffer_consume(monitor_buffer, 1);
     }
 
-    shm_stream_destroy(EV_SOURCE_In);
-    shm_stream_destroy(EV_SOURCE_Out);
-    shm_arbiter_buffer_free(BUFFER_In);
-    shm_arbiter_buffer_free(BUFFER_Out);
+    vms_stream_destroy(EV_SOURCE_In);
+    vms_stream_destroy(EV_SOURCE_Out);
+    vms_arbiter_buffer_free(BUFFER_In);
+    vms_arbiter_buffer_free(BUFFER_Out);
     free(arbiter_counter);
     free(monitor_buffer);
     free(chosen_streams);

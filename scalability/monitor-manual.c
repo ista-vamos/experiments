@@ -17,20 +17,20 @@
 #include "utils.h"
 #include "vector.h"
 
-shm_stream *create_stream(int argc, char *argv[], int arg_i,
+vms_stream *create_stream(int argc, char *argv[], int arg_i,
                           const char *expected_stream_name);
 
 static int stream_running;
 
 static int buffer_thrd(void *data) {
-    shm_arbiter_buffer           *buffer = (shm_arbiter_buffer *)data;
-    shm_stream                   *stream = shm_arbiter_buffer_stream(buffer);
-    register shm_stream_alter_fn  alter  = stream->alter;
-    register shm_stream_filter_fn filter = stream->filter;
+    vms_arbiter_buffer           *buffer = (vms_arbiter_buffer *)data;
+    vms_stream                   *stream = vms_arbiter_buffer_stream(buffer);
+    register vms_stream_alter_fn  alter  = stream->alter;
+    register vms_stream_filter_fn filter = stream->filter;
     const size_t                  size   = stream->event_size;
 
     // wait for buffer->active
-    while (!shm_arbiter_buffer_active(buffer))
+    while (!vms_arbiter_buffer_active(buffer))
         _mm_pause();
 
     printf("Running fetch & autodrop for stream %s\n", stream->name);
@@ -42,11 +42,11 @@ static int buffer_thrd(void *data) {
             break;
         }
 
-        out = shm_arbiter_buffer_write_ptr(buffer);
+        out = vms_arbiter_buffer_write_ptr(buffer);
         assert(out && "No space in the buffer");
         memcpy(out, ev, size);
-        shm_arbiter_buffer_write_finish(buffer);
-        shm_stream_consume(stream, 1);
+        vms_arbiter_buffer_write_finish(buffer);
+        vms_stream_consume(stream, 1);
     }
 
     // TODO: we should check if the stream is finished and remove it
@@ -77,21 +77,21 @@ int main(int argc, char *argv[]) {
 
     initialize_events();
 
-    shm_stream         *stream = create_stream(argc, argv, 1, NULL);
-    shm_arbiter_buffer *buffer = shm_arbiter_buffer_create(
-        stream, sizeof(shm_event) + sizeof(size_t), capacity);
+    vms_stream         *stream = create_stream(argc, argv, 1, NULL);
+    vms_arbiter_buffer *buffer = vms_arbiter_buffer_create(
+        stream, sizeof(vms_event) + sizeof(size_t), capacity);
 
     thrd_t tid;
     thrd_create(&tid, buffer_thrd, buffer);
     stream_running = 1;
-    shm_arbiter_buffer_set_active(buffer, 1);
+    vms_arbiter_buffer_set_active(buffer, 1);
 
     size_t          n = 0, tmp, trials = 0;
     volatile size_t cycles;
     while (1) {
-        tmp = shm_arbiter_buffer_size(buffer);
+        tmp = vms_arbiter_buffer_size(buffer);
         if (tmp > 0) {
-            n += shm_arbiter_buffer_drop(buffer,
+            n += vms_arbiter_buffer_drop(buffer,
                                          tmp > max_consume ? max_consume : tmp);
         }
 
@@ -104,13 +104,13 @@ int main(int argc, char *argv[]) {
     }
     printf("Processed %lu events\n", n);
     printf("Dropped %lu times in total %lu events\n",
-           shm_arbiter_buffer_dropped_times(buffer),
-           shm_arbiter_buffer_dropped_num(buffer));
+           vms_arbiter_buffer_dropped_times(buffer),
+           vms_arbiter_buffer_dropped_num(buffer));
 #if DUMP_STATS
-    shm_arbiter_buffer_dump_stats(buffer);
+    vms_arbiter_buffer_dump_stats(buffer);
 #endif
 
     thrd_join(tid, 0);
-    shm_stream_destroy(stream);
+    vms_stream_destroy(stream);
     deinitialize_events();
 }

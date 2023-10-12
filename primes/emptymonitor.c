@@ -22,7 +22,7 @@ size_t __mma_strm_tlen_Left = 0 ;
 size_t __mma_strm_flen_Left = 0 ;
 atomic_int __mm_strm_done_Left;
 thrd_t __mm_strm_thread_Left;
-shm_arbiter_buffer * __mma_strm_buf_Left;
+vms_arbiter_buffer * __mma_strm_buf_Left;
 typedef struct __mm_strm_in_Left _mm_strm_in_Left;
 typedef struct __mm_strm_out_Left _mm_strm_out_Left;
 typedef struct __mm_strm_hole_Left _mm_strm_hole_Left;
@@ -35,7 +35,7 @@ size_t __mma_strm_tlen_Right = 0 ;
 size_t __mma_strm_flen_Right = 0 ;
 atomic_int __mm_strm_done_Right;
 thrd_t __mm_strm_thread_Right;
-shm_arbiter_buffer * __mma_strm_buf_Right;
+vms_arbiter_buffer * __mma_strm_buf_Right;
 typedef struct __mm_strm_in_Right _mm_strm_in_Right;
 typedef struct __mm_strm_out_Right _mm_strm_out_Right;
 typedef struct __mm_strm_hole_Right _mm_strm_hole_Right;
@@ -81,13 +81,13 @@ struct __mm_strm_hole_Left {
   int n ;
 };
 struct __mm_strm_in_Left {
-  shm_event head ;
+  vms_event head ;
   union {
     _MMEV_Prime Prime ;
   } cases;
 };
 struct __mm_strm_out_Left {
-  shm_event head ;
+  vms_event head ;
   union {
     _mm_strm_hole_Left hole ;
     _MMEV_LPrime LPrime ;
@@ -137,11 +137,11 @@ void _mm_print_strm_Left( ) {
   }
 }
 int _mm_strm_fun_Left(void * arg) {
-  shm_arbiter_buffer * buffer = __mma_strm_buf_Left ;
-  shm_stream * stream = shm_arbiter_buffer_stream ( buffer ) ;
+  vms_arbiter_buffer * buffer = __mma_strm_buf_Left ;
+  vms_stream * stream = vms_arbiter_buffer_stream ( buffer ) ;
   const _mm_strm_in_Left * inevent ;
   _mm_strm_out_Left * outevent ;
-  while((! shm_arbiter_buffer_active ( buffer )))
+  while((! vms_arbiter_buffer_active ( buffer )))
   {
     sleep_ns ( 10 ) ;
   }
@@ -161,21 +161,21 @@ int _mm_strm_fun_Left(void * arg) {
       {
         int _mm_uv_mvar_n_0 = (((inevent->cases).Prime).n) ;
         int _mm_uv_mvar_p_1 = (((inevent->cases).Prime).p) ;
-        outevent = shm_arbiter_buffer_write_ptr ( buffer ) ;
+        outevent = vms_arbiter_buffer_write_ptr ( buffer ) ;
         /* NOTE: this copies also 'kind' which is then overwritten */
-        memcpy ( outevent,inevent,sizeof ( shm_event ) ) ;
+        memcpy ( outevent,inevent,sizeof ( vms_event ) ) ;
         ((outevent->head).kind) = __MM_EVENTCONST_ENUM_LPrime ;
         (((outevent->cases).LPrime).n) = _mm_uv_mvar_p_1 ;
-        shm_arbiter_buffer_write_finish ( buffer ) ;
-        shm_stream_consume ( stream,1 ) ;
+        vms_arbiter_buffer_write_finish ( buffer ) ;
+        vms_stream_consume ( stream,1 ) ;
         continue;
       }
       default:
       {
-        outevent = shm_arbiter_buffer_write_ptr ( buffer ) ;
+        outevent = vms_arbiter_buffer_write_ptr ( buffer ) ;
         memcpy ( outevent,inevent,sizeof ( _mm_strm_in_Left ) ) ;
-        shm_arbiter_buffer_write_finish ( buffer ) ;
-        shm_stream_consume ( stream,1 ) ;
+        vms_arbiter_buffer_write_finish ( buffer ) ;
+        vms_stream_consume ( stream,1 ) ;
       }
     }
   }
@@ -186,13 +186,13 @@ struct __mm_strm_hole_Right {
   int n ;
 };
 struct __mm_strm_in_Right {
-  shm_event head ;
+  vms_event head ;
   union {
     _MMEV_Prime Prime ;
   } cases;
 };
 struct __mm_strm_out_Right {
-  shm_event head ;
+  vms_event head ;
   union {
     _mm_strm_hole_Right hole ;
     _MMEV_RPrime RPrime ;
@@ -242,11 +242,11 @@ void _mm_print_strm_Right( ) {
   }
 }
 int _mm_strm_fun_Right(void * arg) {
-  shm_arbiter_buffer * buffer = __mma_strm_buf_Right ;
-  shm_stream * stream = shm_arbiter_buffer_stream ( buffer ) ;
+  vms_arbiter_buffer * buffer = __mma_strm_buf_Right ;
+  vms_stream * stream = vms_arbiter_buffer_stream ( buffer ) ;
   const _mm_strm_in_Right * inevent ;
   _mm_strm_out_Right * outevent ;
-  while((! shm_arbiter_buffer_active ( buffer )))
+  while((! vms_arbiter_buffer_active ( buffer )))
   {
     sleep_ns ( 10 ) ;
   }
@@ -266,20 +266,20 @@ int _mm_strm_fun_Right(void * arg) {
       {
         int _mm_uv_mvar_n_2 = (((inevent->cases).Prime).n) ;
         int _mm_uv_mvar_p_3 = (((inevent->cases).Prime).p) ;
-        outevent = shm_arbiter_buffer_write_ptr ( buffer ) ;
-        memcpy ( outevent,inevent,sizeof ( shm_event ) ) ;
+        outevent = vms_arbiter_buffer_write_ptr ( buffer ) ;
+        memcpy ( outevent,inevent,sizeof ( vms_event ) ) ;
         ((outevent->head).kind) = __MM_EVENTCONST_ENUM_RPrime ;
         (((outevent->cases).RPrime).n) = _mm_uv_mvar_p_3 ;
-        shm_arbiter_buffer_write_finish ( buffer ) ;
-        shm_stream_consume ( stream,1 ) ;
+        vms_arbiter_buffer_write_finish ( buffer ) ;
+        vms_stream_consume ( stream,1 ) ;
         continue;
       }
       default:
       {
-        outevent = shm_arbiter_buffer_write_ptr ( buffer ) ;
+        outevent = vms_arbiter_buffer_write_ptr ( buffer ) ;
         memcpy ( outevent,inevent,sizeof ( _mm_strm_in_Right ) ) ;
-        shm_arbiter_buffer_write_finish ( buffer ) ;
-        shm_stream_consume ( stream,1 ) ;
+        vms_arbiter_buffer_write_finish ( buffer ) ;
+        vms_stream_consume ( stream,1 ) ;
       }
     }
   }
@@ -325,13 +325,13 @@ int arbiterMonitor( ) {
   uint64_t tmp1, tmp2;
   while(__mm_monitor_running)
   {
-          tmp1 = shm_arbiter_buffer_size(__mma_strm_buf_Left);
+          tmp1 = vms_arbiter_buffer_size(__mma_strm_buf_Left);
           if (tmp1 > 0) {
-                  shm_arbiter_buffer_drop(__mma_strm_buf_Left, tmp1);
+                  vms_arbiter_buffer_drop(__mma_strm_buf_Left, tmp1);
           }
-          tmp2 = shm_arbiter_buffer_size(__mma_strm_buf_Right);
+          tmp2 = vms_arbiter_buffer_size(__mma_strm_buf_Right);
           if (tmp2 > 0) {
-                  shm_arbiter_buffer_drop(__mma_strm_buf_Right, tmp2);
+                  vms_arbiter_buffer_drop(__mma_strm_buf_Right, tmp2);
           }
           __mm_monitor_running
                 = !(tmp1 == 0 && tmp2 == 0 && atomic_load_explicit(&__mm_strm_done_Right, memory_order_acquire) && atomic_load_explicit(&__mm_strm_done_Left, memory_order_acquire));
@@ -341,24 +341,24 @@ int arbiterMonitor( ) {
 int main(int argc,char * * argv) {
   fprintf(stderr, "Reading and dropping events (empty monitor)\n");
   atomic_init ( (&__mm_strm_done_Left),0 ) ;
-  shm_stream * __mma_strm_strm_Left = shm_stream_create_from_argv ( "Left",argc,argv,0 ) ;
-  __mma_strm_buf_Left = shm_arbiter_buffer_create ( __mma_strm_strm_Left,sizeof ( _mm_strm_out_Left ), SHMBUF_ARBITER_BUFSIZE) ;
+  vms_stream * __mma_strm_strm_Left = vms_stream_create_from_argv ( "Left",argc,argv,0 ) ;
+  __mma_strm_buf_Left = vms_arbiter_buffer_create ( __mma_strm_strm_Left,sizeof ( _mm_strm_out_Left ), SHMBUF_ARBITER_BUFSIZE) ;
   thrd_create ( (&__mm_strm_thread_Left),(&_mm_strm_fun_Left),0 ) ;
-  shm_arbiter_buffer_set_active ( __mma_strm_buf_Left,1 ) ;
+  vms_arbiter_buffer_set_active ( __mma_strm_buf_Left,1 ) ;
   atomic_init ( (&__mm_strm_done_Right),0 ) ;
-  shm_stream * __mma_strm_strm_Right = shm_stream_create_from_argv ( "Right",argc,argv,0 ) ;
-  __mma_strm_buf_Right = shm_arbiter_buffer_create ( __mma_strm_strm_Right,sizeof ( _mm_strm_out_Right ), SHMBUF_ARBITER_BUFSIZE) ;
+  vms_stream * __mma_strm_strm_Right = vms_stream_create_from_argv ( "Right",argc,argv,0 ) ;
+  __mma_strm_buf_Right = vms_arbiter_buffer_create ( __mma_strm_strm_Right,sizeof ( _mm_strm_out_Right ), SHMBUF_ARBITER_BUFSIZE) ;
   thrd_create ( (&__mm_strm_thread_Right),(&_mm_strm_fun_Right),0 ) ;
-  shm_arbiter_buffer_set_active ( __mma_strm_buf_Right,1 ) ;
+  vms_arbiter_buffer_set_active ( __mma_strm_buf_Right,1 ) ;
   arbiterMonitor ( ) ;
 
   /*
-  shm_arbiter_buffer_dump_stats ( __mma_strm_buf_Left) ;
-  shm_arbiter_buffer_dump_stats ( __mma_strm_buf_Right) ;
+  vms_arbiter_buffer_dump_stats ( __mma_strm_buf_Left) ;
+  vms_arbiter_buffer_dump_stats ( __mma_strm_buf_Right) ;
   */
 
-  shm_stream_destroy ( __mma_strm_strm_Left ) ;
-  shm_stream_destroy ( __mma_strm_strm_Right ) ;
+  vms_stream_destroy ( __mma_strm_strm_Left ) ;
+  vms_stream_destroy ( __mma_strm_strm_Right ) ;
   return 0 ;
 }
 void _mm_print_streams( ) {

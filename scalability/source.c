@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     struct event_record *events = buffer_get_avail_events(shm, &num);
     assert(num == 1);
 
-    shm_event base = {.id = 0, .kind = events[0].kind};
+    vms_event base = {.id = 0, .kind = events[0].kind};
     assert(base.kind != 0 && "Monitor did not set kind");
 
     void           *addr;

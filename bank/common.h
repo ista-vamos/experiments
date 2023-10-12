@@ -6,12 +6,12 @@
 #include <unistd.h>
 #ifdef SHM_DOMONITOR_WAIT
 #define SHM_DOMONITOR
-#include "../../fastbuf/shm_monitored.h"
+#include "../../fastbuf/vms_monitored.h"
 #define SHM_MONFUN(...) push_data_wait(__VA_ARGS__)
 #endif
 #ifdef SHM_DOMONITOR_NOWAIT
 #define SHM_DOMONITOR
-#include "../../fastbuf/shm_monitored.h"
+#include "../../fastbuf/vms_monitored.h"
 #define SHM_MONFUN(...) push_data_nowait(__VA_ARGS__)
 #endif
 
