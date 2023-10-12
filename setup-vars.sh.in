@@ -10,4 +10,6 @@ vamos_buffers_BUILD_TYPE="@vamos-buffers_BUILD_TYPE@"
 
 # Get the root directory of DynamoRIO
 CMAKE_CACHE="@vamos-sources_SRCDIR@/CMakeCache.txt"
-DRIOROOT="$(grep DynamoRIO_DIR $CMAKE_CACHE | sed 's/.*=\(.*\)/\1/')"
+DRIO_CMAKE="$(grep DynamoRIO_DIR $CMAKE_CACHE | sed 's/.*=\(.*\)/\1/')"
+DRIO_BUILD="$DRIO_CMAKE/.."
+DRIOROOT="$DRIO_CMAKE/../.."

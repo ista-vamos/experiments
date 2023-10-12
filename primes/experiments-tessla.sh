@@ -11,9 +11,9 @@ cd $(dirname 0)
 source ../setup-vars.sh
 source ../setup.sh
 
-VLCC="python3 $vamos_compiler_DIR/compiler/main.py"
-GENCC="$vamos_compiler_DIR/gen/compile.sh"
-TESSLA_JAR="$vamos_compiler_DIR/compiler/tessla-rust.jar"
+VLCC="python3 $vamos_compiler_SRCDIR/compiler/main.py"
+GENCC="$vamos_compiler_SRCDIR/gen/compile.sh"
+TESSLA_JAR="$vamos_compiler_SRCDIR/compiler/tessla-rust.jar"
 FREQ=10000000
 
 # compile the tessla monitor
@@ -53,7 +53,7 @@ for SHM_BUFSIZE in 8; do
 
 		# compile it
 		$VLCC $SPEC -b $ARBITER_BUFSIZE -freq $FREQ -o monitor-tessla.c
-		$GENCC monitor-tessla.c -I$vamos_compiler_DIR ./intmap.o ./compiler_utils.o -lstdc++
+		$GENCC monitor-tessla.c ./intmap.o ./compiler_utils.o -lstdc++
 		mv monitor vamos-tessla
 
                 #for PRIMES_NUM in 10000 20000 30000 40000; do
