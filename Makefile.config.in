@@ -4,4 +4,5 @@ vamos_buffers_LIBRARIES_DIRS_shmbuf=@vamos-buffers_LIBRARIES_DIRS_shmbuf@
 vamos_buffers_LIBRARIES_DIRS_streams=@vamos-buffers_LIBRARIES_DIRS_streams@
 vamos_buffers_INCLUDE_DIRS=@vamos-buffers_INCLUDE_DIRS@
 vamos_buffers_BUILD_TYPE=@vamos-buffers_BUILD_TYPE@
-vamos_compiler_DIR=@vamos_compiler_DIR@
+
+vamos_compiler_SRCDIR=@vamos-compiler_SRCDIR@

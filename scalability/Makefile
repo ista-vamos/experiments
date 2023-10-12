@@ -7,8 +7,8 @@ CFLAGS=-g3 -O3 -flto -fno-fat-lto-objects -fPIC -std=c11
 CPPFLAGS=-D_POSIX_C_SOURCE=200809L -DNDEBUG
 LDFLAGS=-lpthread
 
-MON_COMPILER_PY=${vamos_compiler_DIR}/compiler/main.py
-MON_COMPILER=${vamos_compiler_DIR}/gen/compile.sh
+MON_COMPILER_PY=${vamos_compiler_SRCDIR}/compiler/main.py
+MON_COMPILER=${vamos_compiler_SRCDIR}/gen/compile.sh
 
 SOURCE_LIBS=$(vamos_buffers_LIBRARIES_DIRS_shmbuf)/libvamos-buffers-shmbuf.a\
             $(vamos_buffers_LIBRARIES_DIRS_core)/libvamos-buffers-source.a\

@@ -1,9 +1,5 @@
-#legacy
-COMPILER_DIR=@vamos_compiler_DIR@
-SOURCES_DIR=@vamos_sources_DIR@
-
-vamos_compiler_DIR=@vamos_compiler_DIR@
-vamos_sources_DIR=@vamos_sources_DIR@
+vamos_compiler_SRCDIR=@vamos-compiler_SRCDIR@
+vamos_sources_SRCDIR=@vamos-sources_SRCDIR@
 
 vamos_buffers_LIBRARIES_DIRS_core="@vamos-buffers_LIBRARIES_DIRS_core@"
 vamos_buffers_LIBRARIES_DIRS_shmbuf="@vamos-buffers_LIBRARIES_DIRS_shmbuf@"
@@ -11,3 +7,7 @@ vamos_buffers_LIBRARIES_DIRS_streams="@vamos-buffers_LIBRARIES_DIRS_streams@"
 vamos_buffers_INCLUDE_DIR="@vamos-buffers_INCLUDE_DIRS@"
 
 vamos_buffers_BUILD_TYPE="@vamos-buffers_BUILD_TYPE@"
+
+# Get the root directory of DynamoRIO
+CMAKE_CACHE="@vamos-sources_SRCDIR@/CMakeCache.txt"
+DRIOROOT="$(grep DynamoRIO_DIR $CMAKE_CACHE | sed 's/.*=\(.*\)/\1/')"

@@ -6,10 +6,23 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+if (vamos_DIR)
+	if (NOT vamos-buffers_DIR)
+		set(vamos-buffers_DIR ${vamos_DIR}/vamos-buffers/cmake/vamos-buffers)
+	endif()
+	if (NOT vamos-compiler_DIR)
+		set(vamos-compiler_DIR ${vamos_DIR}/vamos-compiler/cmake/vamos-compiler)
+	endif()
+	if (NOT vamos-sources_DIR)
+		set(vamos-sources_DIR ${vamos_DIR}/vamos-sources/cmake/vamos-sources)
+	endif()
+endif()
+
 find_package(vamos-buffers REQUIRED)
 
 # make sure the path is aboslute (could be provided by the user)
 get_filename_component(vamos-buffers_DIR ${vamos-buffers_DIR} ABSOLUTE)
+get_filename_component(vamos-buffers_SRCDIR ${vamos-buffers_DIR}/../.. ABSOLUTE)
 include_directories(${vamos-buffers_INCLUDE_DIRS})
 
 get_target_property(vamos-buffers_vamos-buffers-lib vamos-buffers-lib LOCATION)
@@ -21,20 +34,22 @@ get_filename_component(vamos-buffers_LIBRARIES_DIRS_core ${vamos-buffers_vamos-b
 get_filename_component(vamos-buffers_LIBRARIES_DIRS_shmbuf ${vamos-buffers_vamos-buffers-shmbuf} DIRECTORY)
 get_filename_component(vamos-buffers_LIBRARIES_DIRS_streams ${vamos-buffers_vamos-buffers-streams} DIRECTORY)
 
-if (vamos_compiler_DIR)
+if (vamos-compiler_DIR)
 	# make sure the user-provided path is aboslute
-	get_filename_component(vamos_compiler_DIR ${vamos_compiler_DIR} ABSOLUTE)
-	message(STATUS "vamos_compiler_DIR=${vamos_compiler_DIR}")
+	get_filename_component(vamos-compiler_DIR ${vamos-compiler_DIR} ABSOLUTE)
+	get_filename_component(vamos-compiler_SRCDIR ${vamos-compiler_DIR}/../.. ABSOLUTE)
+	message(STATUS "vamos-compiler_DIR=${vamos-compiler_DIR}")
 else()
-	message(FATAL_ERROR "Need to set vamos_compiler_DIR variable")
+	message(FATAL_ERROR "Need to set vamos-compiler_DIR variable")
 endif()
 
-if (vamos_sources_DIR)
+if (vamos-sources_DIR)
 	# make sure the user-provided path is aboslute
-	get_filename_component(vamos_sources_DIR ${vamos_sources_DIR} ABSOLUTE)
-	message(STATUS "vamos_sources_DIR=${vamos_sources_DIR}")
+	get_filename_component(vamos-sources_DIR ${vamos-sources_DIR} ABSOLUTE)
+	get_filename_component(vamos-sources_SRCDIR ${vamos-sources_DIR}/../.. ABSOLUTE)
+	message(STATUS "vamos-sources_DIR=${vamos-sources_DIR}")
 else()
-	message(FATAL_ERROR "Need to set vamos_sources_DIR variable")
+	message(FATAL_ERROR "Need to set vamos-sources_DIR variable")
 endif()
 
 

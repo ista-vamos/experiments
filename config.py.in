@@ -3,5 +3,6 @@ vamos_buffers_LIBRARIES_DIRS_core="@vamos-buffers_LIBRARIES_DIRS_core@"
 vamos_buffers_LIBRARIES_DIRS_shmbuf="@vamos-buffers_LIBRARIES_DIRS_shmbuf@"
 vamos_buffers_LIBRARIES_DIRS_streams="@vamos-buffers_LIBRARIES_DIRS_streams@"
 vamos_buffers_INCLUDE_DIRS="@vamos-buffers_INCLUDE_DIRS@"
-vamos_compiler_DIR="@vamos_compiler_DIR@"
-vamos_sources_DIR="@vamos_sources_DIR@"
+
+vamos_compiler_SRCDIR="@vamos-compiler_SRCDIR@"
+vamos_sources_SRCDIR="@vamos-sources_SRCDIR@"
