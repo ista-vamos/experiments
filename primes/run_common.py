@@ -10,14 +10,10 @@ import config
 
 SELFPATH=abspath(dirname(__file__))
 # assume that dynamorio is in the same folder as shamon
-DRIOPATH=abspath(pathjoin(config.vamos_sources_DIR, "ext/dynamorio/"))
-if not isdir(DRIOPATH):
-    DRIOPATH="/opt/dynamorio/"
-if not isdir(DRIOPATH):
-    raise RuntimeError("Couldn't find DynamoRIO")
+DRIOPATH=abspath(config.get_drio_dir())
 
-DRRUN=f"{DRIOPATH}/build/bin64/drrun"
-DRIO=[DRRUN, "-root",  f"{DRIOPATH}/build/",
+DRRUN=f"{DRIOPATH}/bin64/drrun"
+DRIO=[DRRUN, "-root",  f"{DRIOPATH}/",
              "-opt_cleancall", "2", "-opt_speed"]
 PRIMESPATH=f"{SELFPATH}/"
 

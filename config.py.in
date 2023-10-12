@@ -6,3 +6,20 @@ vamos_buffers_INCLUDE_DIRS="@vamos-buffers_INCLUDE_DIRS@"
 
 vamos_compiler_SRCDIR="@vamos-compiler_SRCDIR@"
 vamos_sources_SRCDIR="@vamos-sources_SRCDIR@"
+
+from os.path import isfile
+
+def get_drio_dir():
+    """
+    Get the build directory of DynamoRIO
+    """
+    with open(f"{vamos_sources_SRCDIR}/CMakeCache.txt", 'r') as f:
+        for line in f:
+            if "DynamoRIO_DIR" in line:
+                drio_dir = line[line.find("=") + 1:].strip()
+                # this is probably cmake dir, find the root dir
+                while not isfile(f"{drio_dir}/bin64/drrun"):
+                    drio_dir = f"{drio_dir}/.."
+
+                return drio_dir
+    return None

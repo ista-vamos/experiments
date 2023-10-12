@@ -5,7 +5,7 @@ CFLAGS=-O3
 
 all: prepare
 
-COMPILER_CFILES=${vamos_compiler_DIR}/compiler/cfiles/
+COMPILER_CFILES=${vamos_compiler_SRCDIR}/compiler/cfiles/
 
 compiler_utils.o: ${COMPILER_CFILES}/compiler_utils.c
 	$(CC) -I${vamos_buffers_INCLUDE_DIRS} -c $< -o compiler_utils.o

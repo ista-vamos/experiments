@@ -23,7 +23,7 @@ for buffsize in arbiter_buffer_sizes:
         file.close()
 
 CURRENT_PATH = os.getcwd()
-COMPILER_PATH = f"{config.vamos_compiler_DIR}/compiler/main.py"
+COMPILER_PATH = f"{config.vamos_compiler_SRCDIR}/compiler/main.py"
 
 # compile shamon programs into c programs
 for buffsize in arbiter_buffer_sizes:
@@ -31,9 +31,9 @@ for buffsize in arbiter_buffer_sizes:
 
 
 # generate oject file of intmap
-run(["clang++", "-c", f"{config.vamos_compiler_DIR}/compiler/cfiles/intmap.cpp" ], check=True)
+run(["clang++", "-c", f"{config.vamos_compiler_SRCDIR}/compiler/cfiles/intmap.cpp" ], check=True)
 
-COMPILE_SCRIPT= f"{config.vamos_compiler_DIR}/gen/compile.sh"
+COMPILE_SCRIPT= f"{config.vamos_compiler_SRCDIR}/gen/compile.sh"
 for buffsize in arbiter_buffer_sizes:
         # compile c files
         run(["bash", COMPILE_SCRIPT, f"{CURRENT_PATH}/programs/monitor_{buffsize}.c", "intmap.o", "compiler_utils.o", "-lstdc++" ], check=True)

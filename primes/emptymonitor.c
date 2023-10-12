@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <threads.h>
-#include "../gen/shamon.h"
+#include "../gen/vamos.h"
 #include "../gen/mmlib.h"
 typedef enum __MM_STREAMCONST_ENUM { __MM_STREAMCONST_ENUM_Left, __MM_STREAMCONST_ENUM_Right } _MM_STREAMCONST_ENUM;
 typedef enum __MM_EVENTCONST_ENUM { __MM_EVENTCONST_NOTHING, __MM_EVENTCONST_ENUM_hole, __MM_EVENTCONST_ENUM_Prime, __MM_EVENTCONST_ENUM_LPrime, __MM_EVENTCONST_ENUM_RPrime, __MM_EVENTCONST_ENUM_LSkip, __MM_EVENTCONST_ENUM_RSkip, __MM_EVENTCONST_ENUM_EFinal } _MM_EVENTCONST_ENUM;
@@ -341,12 +341,12 @@ int arbiterMonitor( ) {
 int main(int argc,char * * argv) {
   fprintf(stderr, "Reading and dropping events (empty monitor)\n");
   atomic_init ( (&__mm_strm_done_Left),0 ) ;
-  vms_stream * __mma_strm_strm_Left = vms_stream_create_from_argv ( "Left",argc,argv,0 ) ;
+  vms_stream * __mma_strm_strm_Left = vms_stream_create_from_argv ( "Left",argc,argv,NULL) ;
   __mma_strm_buf_Left = vms_arbiter_buffer_create ( __mma_strm_strm_Left,sizeof ( _mm_strm_out_Left ), SHMBUF_ARBITER_BUFSIZE) ;
   thrd_create ( (&__mm_strm_thread_Left),(&_mm_strm_fun_Left),0 ) ;
   vms_arbiter_buffer_set_active ( __mma_strm_buf_Left,1 ) ;
   atomic_init ( (&__mm_strm_done_Right),0 ) ;
-  vms_stream * __mma_strm_strm_Right = vms_stream_create_from_argv ( "Right",argc,argv,0 ) ;
+  vms_stream * __mma_strm_strm_Right = vms_stream_create_from_argv ( "Right",argc,argv,NULL ) ;
   __mma_strm_buf_Right = vms_arbiter_buffer_create ( __mma_strm_strm_Right,sizeof ( _mm_strm_out_Right ), SHMBUF_ARBITER_BUFSIZE) ;
   thrd_create ( (&__mm_strm_thread_Right),(&_mm_strm_fun_Right),0 ) ;
   vms_arbiter_buffer_set_active ( __mma_strm_buf_Right,1 ) ;
