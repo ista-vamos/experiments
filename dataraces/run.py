@@ -96,7 +96,7 @@ def compile_file(infile):
     # compile VAMOS
     cmd(
         [
-            f"{config.vamos_sources_DIR}/tsan/compile.py",
+            f"{config.vamos_sources_SRCDIR}/src/tsan/compile.py",
             infile,
             "-noinst",
             harness,
