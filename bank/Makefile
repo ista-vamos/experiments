@@ -1,14 +1,14 @@
 include ../Makefile.config
 
 CPPFLAGS=
-CFLAGS=-g #-O3
-VLCC=python3 ${vamos_compiler_DIR}/compiler/main.py
-GENCC=${vamos_compiler_DIR}/gen/compile.sh
+CFLAGS=-g -O3
+VLCC=python3 ${vamos_compiler_SRCDIR}/compiler/main.py
+GENCC=${vamos_compiler_SRCDIR}/gen/compile.sh
 SHAMON_LIB=${vamos_buffers_libraries_DIR}/libvamos-buffers-lib.so  # for dependency
 
 all: monitor-vamos monitor-tessla bank interact
 
-intmap.o: ${vamos_compiler_DIR}/compiler/cfiles/intmap.cpp
+intmap.o: ${vamos_compiler_SRCDIR}/compiler/cfiles/intmap.cpp
 	$(CXX) -c $<
 
 $(VLCC):  # empty, just a depenency for monitor

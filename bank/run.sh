@@ -10,8 +10,11 @@ export PYTHON_OPTIMIZE=1
 
 for ARBITER_BUFSIZE in 4 16 32 64 128 256 512 1024 2048; do
     echo "** SHM BUFSIZE: 1000 elems, ARBITER_BUFSIZE: $ARBITER_BUFSIZE **"
+
+    echo " - Generating the monitor spec "
+    python3 ./genmon.py bankmonitor.vl.in $ARBITER_BUFSIZE
+
     echo " - Generating the monitor"
-    ./genmon.py bankmonitor.vl.in $ARBITER_BUFSIZE
     make -j4 bank 1>>/tmp/make.stdout.txt 2>>/tmp/make.stderr.txt
     make -j4 interact 1>>/tmp/make.stdout.txt 2>>/tmp/make.stderr.txt
     make -j4 monitor-vamos 1>>/tmp/make.stdout.txt 2>>/tmp/make.stderr.txt
