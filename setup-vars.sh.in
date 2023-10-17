@@ -11,5 +11,30 @@ vamos_buffers_BUILD_TYPE="@vamos-buffers_BUILD_TYPE@"
 # Get the root directory of DynamoRIO
 CMAKE_CACHE="@vamos-sources_SRCDIR@/CMakeCache.txt"
 DRIO_CMAKE="$(grep DynamoRIO_DIR $CMAKE_CACHE | sed 's/.*=\(.*\)/\1/')"
+
+case $DRIO_CMAKE in
+        (/*) ;;
+        (*)
+        # not absolute, fix that
+        # TODO: it should be build-dir, not srcdir
+        DRIO_CMAKE="@vamos-sources_SRCDIR@/$DRIO_CMAKE"
+        ;;
+esac
+
 DRIO_BUILD="$DRIO_CMAKE/.."
 DRIOROOT="$DRIO_CMAKE/../.."
+
+if [ ! -d $DRIO_BUILD ]; then
+        echo "DRIO_BUILD=$DRIO_BUILD which is not a directory"
+        exit 1
+fi
+
+if [ ! -d $DRIOROOT ]; then
+        echo "DRIOROOT=$DRIOROOT which is not a directory"
+        exit 1
+fi
+
+if [ ! -f $DRIOROOT/CMakeLists.txt ]; then
+        echo "DRIOROOT=$DRIOROOT seems to be a wrong directory"
+        exit 1
+fi
