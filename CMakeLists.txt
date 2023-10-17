@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(vamos-experiments)
+project(fase23-experiments)
 
 set(CMAKE_VERBOSE_MAKEFILE 1)
 set(CMAKE_C_STANDARD 11)
@@ -20,9 +20,10 @@ endif()
 
 find_package(vamos-buffers REQUIRED)
 
-# make sure the path is aboslute (could be provided by the user)
+# make sure the paths are aboslute
 get_filename_component(vamos-buffers_DIR ${vamos-buffers_DIR} ABSOLUTE)
 get_filename_component(vamos-buffers_SRCDIR ${vamos-buffers_DIR}/../.. ABSOLUTE)
+
 include_directories(${vamos-buffers_INCLUDE_DIRS})
 
 get_target_property(vamos-buffers_vamos-buffers-lib vamos-buffers-lib LOCATION)

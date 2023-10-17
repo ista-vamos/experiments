@@ -7,7 +7,7 @@ vamos_buffers_INCLUDE_DIRS="@vamos-buffers_INCLUDE_DIRS@"
 vamos_compiler_SRCDIR="@vamos-compiler_SRCDIR@"
 vamos_sources_SRCDIR="@vamos-sources_SRCDIR@"
 
-from os.path import isfile
+from os.path import isfile, isdir
 
 def get_drio_dir():
     """
@@ -17,9 +17,12 @@ def get_drio_dir():
         for line in f:
             if "DynamoRIO_DIR" in line:
                 drio_dir = line[line.find("=") + 1:].strip()
+                if drio_dir[0] != '/':
+                    drio_dir = f"@vamos-sources_DIR@/../../{drio_dir}"
                 # this is probably cmake dir, find the root dir
                 while not isfile(f"{drio_dir}/bin64/drrun"):
                     drio_dir = f"{drio_dir}/.."
+                    assert isdir(drio_dir), f"Got outside root, start line: {line}"
 
                 return drio_dir
     return None
