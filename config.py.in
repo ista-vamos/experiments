@@ -7,12 +7,34 @@ vamos_buffers_INCLUDE_DIRS="@vamos-buffers_INCLUDE_DIRS@"
 vamos_compiler_SRCDIR="@vamos-compiler_SRCDIR@"
 vamos_sources_SRCDIR="@vamos-sources_SRCDIR@"
 
-from os.path import isfile, isdir
+from os.path import isfile, isdir, expandvars
+import re
 
-def get_drio_dir():
+def get_var(V):
+    """
+    Get variable from `set-vars.sh` file
+    """
+    svfile = "@CMAKE_CURRENT_SOURCE_DIR@/set-vars.sh"
+    if not isfile(svfile):
+        return None
+
+    with open(svfile, "r") as f:
+        expr = re.compile(f"(export)? {V}\s*=\s*(.*)")
+        for line in f:
+            result = expr.match(line)
+            if result:
+                return expandvars(result.group(2))
+    return None
+
+def get_drio_builddir():
     """
     Get the build directory of DynamoRIO
     """
+
+    v = get_var("DRIO_BUILD")
+    if v is not None:
+        return v
+
     with open(f"{vamos_sources_SRCDIR}/CMakeCache.txt", 'r') as f:
         for line in f:
             if "DynamoRIO_DIR" in line:

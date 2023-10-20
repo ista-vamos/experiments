@@ -9,8 +9,7 @@ sys.path.append('..')
 import config
 
 SELFPATH=abspath(dirname(__file__))
-# assume that dynamorio is in the same folder as shamon
-DRIOPATH=abspath(config.get_drio_dir())
+DRIOPATH=abspath(config.get_drio_builddir())
 
 DRRUN=f"{DRIOPATH}/bin64/drrun"
 DRIO=[DRRUN, "-root",  f"{DRIOPATH}/",
