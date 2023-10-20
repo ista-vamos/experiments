@@ -37,7 +37,7 @@ static int buffer_thrd(void *data) {
 
     void *ev, *out;
     while (1) {
-        ev = stream_fetch(stream, buffer);
+        ev = vms_stream_fetch(stream, buffer);
         if (!ev) {
             break;
         }

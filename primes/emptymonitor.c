@@ -8,7 +8,7 @@
 #include "../gen/mmlib.h"
 typedef enum __MM_STREAMCONST_ENUM { __MM_STREAMCONST_ENUM_Left, __MM_STREAMCONST_ENUM_Right } _MM_STREAMCONST_ENUM;
 typedef enum __MM_EVENTCONST_ENUM { __MM_EVENTCONST_NOTHING, __MM_EVENTCONST_ENUM_hole, __MM_EVENTCONST_ENUM_Prime, __MM_EVENTCONST_ENUM_LPrime, __MM_EVENTCONST_ENUM_RPrime, __MM_EVENTCONST_ENUM_LSkip, __MM_EVENTCONST_ENUM_RSkip, __MM_EVENTCONST_ENUM_EFinal } _MM_EVENTCONST_ENUM;
-typedef struct source_control _mm_source_control;
+typedef struct vms_source_control _mm_source_control;
 void _mm_print_streams( );
 typedef struct __MMEV_Prime _MMEV_Prime;
 typedef struct __MMEV_LPrime _MMEV_LPrime;
@@ -147,7 +147,7 @@ int _mm_strm_fun_Left(void * arg) {
   }
   while(1)
   {
-    inevent = stream_fetch ( stream,buffer ) ;
+    inevent = vms_stream_fetch ( stream,buffer ) ;
     if(inevent == 0)
     {
       break;
@@ -252,7 +252,7 @@ int _mm_strm_fun_Right(void * arg) {
   }
   while(1)
   {
-    inevent = stream_fetch ( stream,buffer ) ;
+    inevent = vms_stream_fetch ( stream,buffer ) ;
     if(inevent == 0)
     {
       break;

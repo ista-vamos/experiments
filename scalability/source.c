@@ -47,17 +47,17 @@ int main(int argc, char *argv[]) {
     }
 
     /* Initialize the info about this source */
-    struct source_control *control = source_control_define(1, "E", "l");
+    struct vms_source_control *control = vms_source_control_define(1, "E", "l");
     assert(control);
-    struct buffer *shm = create_shared_buffer(shmkey, shm_buffer_capacity, control);
+    vms_shm_buffer *shm = vms_shm_buffer_create(shmkey, shm_buffer_capacity, control);
     assert(shm);
     free(control);
     fprintf(stderr, "info: waiting for the monitor to attach... ");
-    buffer_wait_for_monitor(shm);
+    vms_shm_buffer_wait_for_reader(shm);
     fprintf(stderr, "done\n");
 
     size_t               num;
-    struct event_record *events = buffer_get_avail_events(shm, &num);
+    struct vms_event_record *events = vms_shm_buffer_get_avail_events(shm, &num);
     assert(num == 1);
 
     vms_event base = {.id = 0, .kind = events[0].kind};
@@ -67,14 +67,14 @@ int main(int argc, char *argv[]) {
     size_t          n = 0;
     volatile size_t cycles;
     while (++n <= events_num) {
-        while (!(addr = buffer_start_push(shm))) {
+        while (!(addr = vms_shm_buffer_start_push(shm))) {
             ++waiting_for_buffer;
         }
         /* push the base info about event */
         ++base.id;
-        addr = buffer_partial_push(shm, addr, &base, sizeof(base));
-        buffer_partial_push(shm, addr, &n, sizeof(n));
-        buffer_finish_push(shm);
+        addr = vms_shm_buffer_partial_push(shm, addr, &base, sizeof(base));
+        vms_shm_buffer_partial_push(shm, addr, &n, sizeof(n));
+        vms_shm_buffer_finish_push(shm);
 
         /* wait `freq` cycles before sending next event */
         cycles = 0;
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
     /* Free up memory held within the regex memory */
     fprintf(stderr, "info: sent %lu events, busy waited on buffer %lu cycles\n",
             base.id, waiting_for_buffer);
-    destroy_shared_buffer(shm);
+    vms_shm_buffer_destroy(shm);
 
     return 0;
 }

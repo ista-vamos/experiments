@@ -8,9 +8,9 @@
 int isprime(int);
 
 int main(void) {
-    struct buffer *shm = get_shared_buffer();
+    vms_shm_buffer *shm = get_shared_buffer();
     assert(shm && "Failed getting shared buffer");
-    struct buffer *local = get_local_buffer(shm);
+    vms_shm_buffer *local = get_local_buffer(shm);
     if (!local) {
         release_shared_buffer(shm);
         fprintf(stderr, "Out of memory");
