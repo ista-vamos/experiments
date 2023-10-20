@@ -129,3 +129,18 @@ experiments-tessla`:
 cd primes
 make experiments-tessla
 ```
+
+## A build with a custom VAMOS
+
+If you have built VAMOS and you want to build the experiments with this build
+of VAMOS, you need to specify the path to VAMOS:
+
+```
+cmake . -Dvamos_DIR=path/to/vamos
+```
+
+Also, if some paths get broken, e.g., because you have DynamoRIO build
+somewhere else, you can either export relevant variables with paths
+(see `setup-vars.sh`) in the current terminal, or put them into the file
+`set-vars.sh`.
+

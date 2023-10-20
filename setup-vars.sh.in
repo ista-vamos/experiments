@@ -8,9 +8,16 @@ vamos_buffers_INCLUDE_DIR="@vamos-buffers_INCLUDE_DIRS@"
 
 vamos_buffers_BUILD_TYPE="@vamos-buffers_BUILD_TYPE@"
 
-# Get the root directory of DynamoRIO
-CMAKE_CACHE="@vamos-sources_SRCDIR@/CMakeCache.txt"
-DRIO_CMAKE="$(grep DynamoRIO_DIR $CMAKE_CACHE | sed 's/.*=\(.*\)/\1/')"
+DIR=@CMAKE_CURRENT_SOURCE_DIR@
+if [ -f $DIR/set-vars.sh ]; then
+	source $DIR/set-vars.sh
+fi
+
+# Get the root directory of DynamoRIO if it was not exported by the user
+if [ -z "$DRIO_CMAKE" ]; then
+	CMAKE_CACHE="@vamos-sources_SRCDIR@/CMakeCache.txt"
+	DRIO_CMAKE="$(grep DynamoRIO_DIR $CMAKE_CACHE | sed 's/.*=\(.*\)/\1/')"
+fi
 
 case $DRIO_CMAKE in
         (/*) ;;
@@ -21,20 +28,33 @@ case $DRIO_CMAKE in
         ;;
 esac
 
-DRIO_BUILD="$DRIO_CMAKE/.."
-DRIOROOT="$DRIO_CMAKE/../.."
+if [ -z "$DRIO_BUILD" ]; then
+	DRIO_BUILD="$DRIO_CMAKE/.."
+fi
+if [ -z "$DRIOROOT" ]; then
+	DRIOROOT="$DRIO_CMAKE/../.."
+fi
 
 if [ ! -d $DRIO_BUILD ]; then
         echo "DRIO_BUILD=$DRIO_BUILD which is not a directory"
+	echo "If this root is in some non-standard location, export this variable"
+	echo "to point to this directory. For a pernament export, put this export"
+	echo "into $DIR/set-vars.sh"
         exit 1
 fi
 
 if [ ! -d $DRIOROOT ]; then
         echo "DRIOROOT=$DRIOROOT which is not a directory"
+	echo "If this root is in some non-standard location, export this variable"
+	echo "to point to this directory. For a pernament export, put this export"
+	echo "into $DIR/set-vars.sh"
         exit 1
 fi
 
 if [ ! -f $DRIOROOT/CMakeLists.txt ]; then
         echo "DRIOROOT=$DRIOROOT seems to be a wrong directory"
+	echo "If this root is in some non-standard location, export this variable"
+	echo "to point to this directory. For a pernament export, put this export"
+	echo "into $DIR/set-vars.sh"
         exit 1
 fi
