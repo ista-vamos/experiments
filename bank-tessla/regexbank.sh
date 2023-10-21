@@ -7,7 +7,7 @@ shift
 ARBITER_BUFSIZE=$1
 shift
 
-DIR=$(dirname $0)
+DIR=$(readlink -f $(dirname $0))
 BANK_DIR="$DIR/../bank"
 
 TIME=/usr/bin/time

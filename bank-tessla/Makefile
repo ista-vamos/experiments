@@ -29,7 +29,7 @@ bankmonitor-$(BUFSIZE).vl: bankmonitor.vl.in
 bankmonitor-$(BUFSIZE).c: bankmonitor-$(BUFSIZE).vl tesslamon/Cargo.toml
 	$(VLCC) -o bankmonitor-$(BUFSIZE).c -t -d tesslamon bankmonitor-$(BUFSIZE).vl
 
-tesslamon/target/release/libmonitor.a: bankmonitor-$(BUFSIZE).c tesslamon/Cargo.toml
+tesslamon/target/release/*monitor.a: bankmonitor-$(BUFSIZE).c tesslamon/Cargo.toml
 	-cd ./tesslamon; cargo build --release
 
 intmap.o: $(vamos_compiler_SRCDIR)/compiler/cfiles/intmap.*
