@@ -1,0 +1,29 @@
+include ../Makefile.config
+
+ifndef BUFSIZE
+$(error BUFSIZE variable not set, use `make <target> BUFSIZE=N`)
+endif
+
+CPPFLAGS=
+CFLAGS= #-O3
+
+VLCC=python3 ${vamos_compiler_SRCDIR}/compiler/main.py
+GENCC=${vamos_compiler_SRCDIR}/gen/compile.sh
+COMPILER_CFILES=${vamos_compiler_SRCDIR}/compiler/cfiles/
+
+all: monitor
+
+
+compiler_utils.o: ${COMPILER_CFILES}/compiler_utils.c
+	$(CC) -I${vamos_buffers_INCLUDE_DIRS} -c $< -o compiler_utils.o
+
+intmap.o: ${COMPILER_CFILES}/intmap.cpp
+	$(CXX) -c $< -o intmap.o
+
+monitor.c: monitor.vl
+	$(VLCC) monitor.vl -b $(BUFSIZE) -o monitor.c
+	-clang-format -i monitor.c
+
+monitor: monitor.c $(GENCC) compiler_utils.o
+	$(GENCC) monitor.c compiler_utils.o
+
