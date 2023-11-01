@@ -1,7 +1,8 @@
 include ../Makefile.config
 
 ifndef BUFSIZE
-$(error BUFSIZE variable not set, use `make <target> BUFSIZE=N`)
+#$(error BUFSIZE variable not set, use `make <target> BUFSIZE=N`)
+BUFSIZE=256
 endif
 
 CPPFLAGS=
@@ -25,5 +26,9 @@ monitor.c: monitor.vl
 	-clang-format -i monitor.c
 
 monitor: monitor.c $(GENCC) compiler_utils.o
+	$(GENCC) monitor.c compiler_utils.o
+
+# only compile, for testing
+compile: compiler_utils.o
 	$(GENCC) monitor.c compiler_utils.o
 

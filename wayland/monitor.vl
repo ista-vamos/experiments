@@ -4,26 +4,30 @@ stream type WaylandSource
     client_exit(pid: int);
 }
 
-stream type WaylandConnection(pid: int)
+stream type WaylandConnection(pid: int, pointer_x: double, pointer_y: double)
 {
     pointer_motion(time: uint32_t, x: uint32_t, y : uint32_t);
+    pointer_button(serial: uint32_t, time: uint32_t,
+                   button: uint32_t, pressed : uint32_t);
     keyboard_key(serial: uint32_t, time: uint32_t, key: uint32_t, pressed: uint8_t);
 }
 
 stream processor WaylandProcessor
 : WaylandSource -> WaylandConnection extends FORWARD
 {
-    on client_new(pid) creates WaylandConnection(pid) to autodrop(@BUFSIZE)
+    on client_new(pid) creates WaylandConnection(pid, 0, 0) to autodrop(@BUFSIZE)
     	include in WaylandConnections forward;
 }
 
 buffer group WaylandConnections : WaylandConnection
-event source Clients : WaylandSource process using WaylandProcessor to autodrop(256)
+event source Clients : WaylandSource process using WaylandProcessor to autodrop(64)
 
 
 
 stream type LibinputSource
 {
+    pointer_motion(time: double, dx: double, dy: double, unacc_dx: double, unacc_dy: double);
+    pointer_button(time: double, button: uint32_t, pressed: uint32_t);
     keyboard_key(time: double, key: uint32_t, pressed: uint8_t);
 }
 
@@ -42,22 +46,51 @@ $$
 
 arbiter : GlobalEvent
 {
-    choose first 1 C from WaylandConnections
+    choose first 999 C from WaylandConnections
     {
         on C : keyboard_key(serial, time, key, pressed) |
         $$
-            printf("[%i] key(serial=%u, time: %u, key=%u, pressed=%u)\n",
+            printf("[%i] wayland.key(serial=%u, time: %u, key=%u, pressed=%u)\n",
 		   $C.pid;, serial, time, key, pressed);
         $$
 
         on C : pointer_motion(time, x, y) |
         $$
-            printf("[%i] motion(time=%u, x=%f, y=%f)\n",
+            printf("[%i] wayland.motion(time=%u, x=%f, y=%f)\n",
 		   $C.pid;, time,
 		   wl_fixed_to_double(x),
 		   wl_fixed_to_double(y));
         $$
+
+   	on C : pointer_button(serial, time, button, pressed) |
+   	$$
+   	    printf("way.button(serial: %u, time: %u, button=%u, pressed=%u)\n", serial, time, button, pressed);
+   	$$
+
+   	on Libinput : keyboard_key(time, key, pressed) |
+   	$$
+   	    printf("libinput.key(time: %f, key=%u, pressed=%u)\n", time, key, pressed);
+   	$$
+
+   	on Libinput : pointer_motion(time, dx, dy, udx, udy) |
+   	$$
+   	    printf("libinput.motion(time: %f, dx=%5.2f, dy=%5.2f,)\n", time, dx, dy);
+   	$$
+
+   	on Libinput : pointer_button(time, button, pressed) |
+   	$$
+   	    printf("libinput.key(time: %f, button=%u, pressed=%u)\n", time, button, pressed);
+   	$$
+
     }
+
+    on Libinput : | keyboard_key(time, key, pressed)
+    $$
+    $$
+
+    on Libinput : | pointer_motion(time, dx, dy, udx, udy)
+    $$
+    $$
 }
 
 monitor {
