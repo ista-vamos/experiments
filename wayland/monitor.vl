@@ -18,8 +18,17 @@ stream processor WaylandProcessor
 }
 
 buffer group WaylandConnections : WaylandConnection
-
 event source Clients : WaylandSource process using WaylandProcessor to autodrop(256)
+
+
+
+stream type LibinputSource
+{
+    keyboard_key(time: double, key: uint32_t, pressed: uint8_t);
+}
+
+event source Libinput : LibinputSource to autodrop(@BUFSIZE)
+
 
 stream type GlobalEvent
 {
