@@ -21,8 +21,8 @@ compiler_utils.o: ${COMPILER_CFILES}/compiler_utils.c
 intmap.o: ${COMPILER_CFILES}/intmap.cpp
 	$(CXX) -c $< -o intmap.o
 
-monitor.c: monitor.vl
-	$(VLCC) monitor.vl -b $(BUFSIZE) -f 2000 -o monitor.c
+monitor.c: #monitor.vl
+#	$(VLCC) monitor.vl -b $(BUFSIZE) -f 2000 -o monitor.c
 	-clang-format -i monitor.c
 
 monitor: monitor.c $(GENCC) compiler_utils.o
