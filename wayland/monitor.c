@@ -1,6 +1,7 @@
 
 
 #include <assert.h>
+#include <float.h>
 #include <immintrin.h> /* _mm_pause */
 #include <limits.h>
 #include <signal.h>
@@ -9,7 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <threads.h>
-#include <float.h>
 
 #include "vamos-buffers/core/arbiter.h"
 #include "vamos-buffers/core/monitor.h"
@@ -336,8 +336,6 @@ struct _STREAM_MonitorEvent_out {
 };
 typedef struct _STREAM_MonitorEvent_out STREAM_MonitorEvent_out;
 
-
-
 // functions that create a hole and update holes
 
 // Declare structs that store the data of streams shared among events in the
@@ -349,14 +347,12 @@ typedef struct _STREAM_WaylandConnection_ARGS {
 } STREAM_WaylandConnection_ARGS;
 
 typedef struct _BG_data {
-	vms_arbiter_buffer *buffer;
+  vms_arbiter_buffer *buffer;
 
-	STREAM_WaylandConnection_ARGS args;
+  STREAM_WaylandConnection_ARGS args;
 } BG_data;
 
 VEC(WaylandConnections, BG_data *);
-
-
 
 // instantiate the structs that store the variables shared among events in the
 // same struct
@@ -547,8 +543,7 @@ int PERF_LAYER_WaylandProcessor(vms_arbiter_buffer *buffer) {
     sleep_ns(10);
   }
   while (true) {
-    inevent =
-        vms_stream_fetch(stream);
+    inevent = vms_stream_fetch(stream);
 
     if (inevent == NULL) {
       // no more events
@@ -557,8 +552,7 @@ int PERF_LAYER_WaylandProcessor(vms_arbiter_buffer *buffer) {
 
     switch ((inevent->head).kind) {
 
-    case WAYLANDSOURCE_CLIENT_NEW:
-    {
+    case WAYLANDSOURCE_CLIENT_NEW: {
       vms_stream_hole_handling hole_handling = {
           .hole_event_size = sizeof(STREAM_WaylandConnection_out),
           .init = &init_hole_hole,
@@ -617,7 +611,8 @@ int PERF_LAYER_WaylandProcessor(vms_arbiter_buffer *buffer) {
 
       // we insert a new event source in the corresponding buffer group
       BG_data *data = malloc(sizeof(BG_data));
-      if (!data) abort();
+      if (!data)
+        abort();
 
       int pid = ((STREAM_WaylandSource_in *)inevent)->cases.client_new.pid;
       data->args.pid = pid;
@@ -633,7 +628,7 @@ int PERF_LAYER_WaylandProcessor(vms_arbiter_buffer *buffer) {
       vms_arbiter_buffer_set_active(temp_buffer, true);
 
       break;
-      }
+    }
     }
     vms_stream_consume(stream, 1);
   }
@@ -877,7 +872,6 @@ static inline vms_event *get_event_at_index(char *e1, size_t i1, char *e2,
   }
 }
 
-
 int RULE_SET_default();
 
 void print_event_name(int ev_src_index, int event_index) {
@@ -973,20 +967,21 @@ void print_buffers_state() {
 }
 
 static inline vms_event *get_newest_event(vms_arbiter_buffer *buffer) {
-        void *e1, *e2;
-	size_t i1, i2;
+  void *e1, *e2;
+  size_t i1, i2;
 
-        if (vms_arbiter_buffer_peek(buffer, 0,
-                                    (void**)&e1, &i1, 
-                                    (void**)&e2, &i2) == 0) {
-            return NULL;
-        }
+  if (vms_arbiter_buffer_peek(buffer, 0, (void **)&e1, &i1, (void **)&e2,
+                              &i2) == 0) {
+    return NULL;
+  }
 
-	if (i2 == 0) {
-	    return (vms_event*)(((unsigned char *)e1) + (i1-1)*vms_arbiter_buffer_elem_size(buffer));
-	} else {
-	    return (vms_event*)(((unsigned char *)e2) + (i2-1)*vms_arbiter_buffer_elem_size(buffer));
-	}
+  if (i2 == 0) {
+    return (vms_event *)(((unsigned char *)e1) +
+                         (i1 - 1) * vms_arbiter_buffer_elem_size(buffer));
+  } else {
+    return (vms_event *)(((unsigned char *)e2) +
+                         (i2 - 1) * vms_arbiter_buffer_elem_size(buffer));
+  }
 }
 
 static void print_buffer_state(vms_arbiter_buffer *buffer) {
@@ -1016,148 +1011,154 @@ static int arbiter() {
     /* find the event with the least timestamp and send it to the monitor */
     mtx_lock(&LOCK_WaylandConnections);
     for (int i = 0; i < VEC_SIZE(WaylandConnections); ++i) {
-	STREAM_WaylandConnection_out *ev
-		= (STREAM_WaylandConnection_out *)
-		vms_arbiter_buffer_top(WaylandConnections[i]->buffer);
-	if (!ev)
-	    continue;
+      STREAM_WaylandConnection_out *ev =
+          (STREAM_WaylandConnection_out *)vms_arbiter_buffer_top(
+              WaylandConnections[i]->buffer);
+      if (!ev)
+        continue;
 
-	if (ev->cases.pointer_motion.time < least_time) {
-	    least_time = ev->cases.pointer_motion.time;
-	    lbuffer = WaylandConnections[i]->buffer;
-	}
+      if (ev->cases.pointer_motion.time < least_time) {
+        least_time = ev->cases.pointer_motion.time;
+        lbuffer = WaylandConnections[i]->buffer;
+      }
     }
     mtx_unlock(&LOCK_WaylandConnections);
 
     if (lbuffer) {
-	STREAM_WaylandConnection_out *ev
-		= (STREAM_WaylandConnection_out *)
-		vms_arbiter_buffer_top(lbuffer);
+      STREAM_WaylandConnection_out *ev =
+          (STREAM_WaylandConnection_out *)vms_arbiter_buffer_top(lbuffer);
 
-        current_time = ev->cases.pointer_motion.time;
+      current_time = ev->cases.pointer_motion.time;
 
-	if (current_way_buffer != lbuffer || !in_segment) {
-            current_way_buffer = lbuffer;
-            outevent = (STREAM_MonitorEvent_out *)vms_monitor_buffer_write_ptr(
-                    monitor_buffer);
-            outevent->head.id = ++sent_events;
-            outevent->head.kind = MONITOREVENT_SEGMENT_START;
-            vms_monitor_buffer_write_finish(monitor_buffer);
-	    in_segment = true;
-        }
-
+      if (current_way_buffer != lbuffer || !in_segment) {
+        current_way_buffer = lbuffer;
         outevent = (STREAM_MonitorEvent_out *)vms_monitor_buffer_write_ptr(
-                monitor_buffer);
+            monitor_buffer);
         outevent->head.id = ++sent_events;
-
-	switch (ev->head.kind) {
-	case WAYLANDCONNECTION_POINTER_MOTION:
-            outevent->head.kind = MONITOREVENT_WAYLANDMOTION;
-            outevent->cases.WaylandMotion.time = ev->cases.pointer_motion.time;
-            outevent->cases.WaylandMotion.x = wl_fixed_to_double(ev->cases.pointer_motion.x);
-            outevent->cases.WaylandMotion.y = wl_fixed_to_double(ev->cases.pointer_motion.y);
-	    break;
-	case WAYLANDCONNECTION_POINTER_BUTTON:
-            outevent->head.kind = MONITOREVENT_WAYLANDBUTTON;
-            outevent->cases.WaylandButton.time = ev->cases.pointer_button.time;
-            outevent->cases.WaylandButton.button = ev->cases.pointer_button.button;
-            outevent->cases.WaylandButton.pressed = ev->cases.pointer_button.pressed;
-	    break;
-	case WAYLANDCONNECTION_KEYBOARD_KEY:
-            outevent->head.kind = MONITOREVENT_WAYLANDKEY;
-            outevent->cases.WaylandKey.time = ev->cases.keyboard_key.time;
-            outevent->cases.WaylandKey.key = ev->cases.keyboard_key.key;
-            outevent->cases.WaylandKey.pressed = ev->cases.keyboard_key.pressed;
-	    break;
-	case WAYLANDCONNECTION_POINTER_ENTRY:
-            outevent->head.kind = MONITOREVENT_SEGMENT_START;
-	    break;
-	case WAYLANDCONNECTION_POINTER_LEAVE:
-            outevent->head.kind = MONITOREVENT_SEGMENT_END;
-	    in_segment = false;
-	    break;
-	case WAYLANDCONNECTION_HOLE:
-            outevent->head.kind = MONITOREVENT_HOLE;
-	    break;
-	default: assert(0 && "Invalid event"); abort();
-	}
-
+        outevent->head.kind = MONITOREVENT_SEGMENT_START;
         vms_monitor_buffer_write_finish(monitor_buffer);
-	vms_arbiter_buffer_drop(lbuffer, 1);
+        in_segment = true;
+      }
+
+      outevent = (STREAM_MonitorEvent_out *)vms_monitor_buffer_write_ptr(
+          monitor_buffer);
+      outevent->head.id = ++sent_events;
+
+      switch (ev->head.kind) {
+      case WAYLANDCONNECTION_POINTER_MOTION:
+        outevent->head.kind = MONITOREVENT_WAYLANDMOTION;
+        outevent->cases.WaylandMotion.time = ev->cases.pointer_motion.time;
+        outevent->cases.WaylandMotion.x =
+            wl_fixed_to_double(ev->cases.pointer_motion.x);
+        outevent->cases.WaylandMotion.y =
+            wl_fixed_to_double(ev->cases.pointer_motion.y);
+        break;
+      case WAYLANDCONNECTION_POINTER_BUTTON:
+        outevent->head.kind = MONITOREVENT_WAYLANDBUTTON;
+        outevent->cases.WaylandButton.time = ev->cases.pointer_button.time;
+        outevent->cases.WaylandButton.button = ev->cases.pointer_button.button;
+        outevent->cases.WaylandButton.pressed =
+            ev->cases.pointer_button.pressed;
+        break;
+      case WAYLANDCONNECTION_KEYBOARD_KEY:
+        outevent->head.kind = MONITOREVENT_WAYLANDKEY;
+        outevent->cases.WaylandKey.time = ev->cases.keyboard_key.time;
+        outevent->cases.WaylandKey.key = ev->cases.keyboard_key.key;
+        outevent->cases.WaylandKey.pressed = ev->cases.keyboard_key.pressed;
+        break;
+      case WAYLANDCONNECTION_POINTER_ENTRY:
+        outevent->head.kind = MONITOREVENT_SEGMENT_START;
+        break;
+      case WAYLANDCONNECTION_POINTER_LEAVE:
+        outevent->head.kind = MONITOREVENT_SEGMENT_END;
+        in_segment = false;
+        break;
+      case WAYLANDCONNECTION_HOLE:
+        outevent->head.kind = MONITOREVENT_HOLE;
+        break;
+      default:
+        assert(0 && "Invalid event");
+        abort();
+      }
+
+      vms_monitor_buffer_write_finish(monitor_buffer);
+      vms_arbiter_buffer_drop(lbuffer, 1);
     } else {
-       /* we still have no wayland events, drop old libinput events */
-       STREAM_LibinputSource_out *ev;
-       STREAM_LibinputSource_out *newest_ev
-               = (STREAM_LibinputSource_out *) get_newest_event(BUFFER_Libinput);
-       if (newest_ev) {
-           double newest_time = newest_ev->cases.pointer_motion.time;
-           while (true) {
-               ev = (STREAM_LibinputSource_out*)vms_arbiter_buffer_top(BUFFER_Libinput);
-               if (ev == NULL)
-                   break;
+      /* we still have no wayland events, drop old libinput events */
+      STREAM_LibinputSource_out *ev;
+      STREAM_LibinputSource_out *newest_ev =
+          (STREAM_LibinputSource_out *)get_newest_event(BUFFER_Libinput);
+      if (newest_ev) {
+        double newest_time = newest_ev->cases.pointer_motion.time;
+        while (true) {
+          ev = (STREAM_LibinputSource_out *)vms_arbiter_buffer_top(
+              BUFFER_Libinput);
+          if (ev == NULL)
+            break;
 
-                double time2 = ev->cases.pointer_motion.time;
-                if ((newest_time - time2) > TAU) {
-                    vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-                    printf("drop old libinput: %f .. %f\n", newest_time, time2);
-                } else {
-                    break;
-                }
-           }
-       }
+          double time2 = ev->cases.pointer_motion.time;
+          if ((newest_time - time2) > TAU) {
+            vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
+            printf("drop old libinput: %f .. %f\n", newest_time, time2);
+          } else {
+            break;
+          }
+        }
+      }
     }
-
 
     /** ---------- LIBINPUT ---------- **/
     STREAM_LibinputSource_out *ev;
     while (true) {
-        ev = (STREAM_LibinputSource_out*) vms_arbiter_buffer_top(BUFFER_Libinput);
-        if (ev == NULL)
-            break;
+      ev = (STREAM_LibinputSource_out *)vms_arbiter_buffer_top(BUFFER_Libinput);
+      if (ev == NULL)
+        break;
 
-         double time2 = ev->cases.pointer_motion.time;
-         if (!in_segment && fabs(current_time - time2) > TAU) {
-             vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-             printf("drop old libinput (2): %f .. %f\n", current_time, time2);
-             continue;
-         }
+      double time2 = ev->cases.pointer_motion.time;
+      if (!in_segment && fabs(current_time - time2) > TAU) {
+        vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
+        printf("drop old libinput (2): %f .. %f\n", current_time, time2);
+        continue;
+      }
 
-         /* ------------------------- */
-         outevent = (STREAM_MonitorEvent_out *)vms_monitor_buffer_write_ptr(
-                 monitor_buffer);
-         outevent->head.id = ++sent_events;
+      /* ------------------------- */
+      outevent = (STREAM_MonitorEvent_out *)vms_monitor_buffer_write_ptr(
+          monitor_buffer);
+      outevent->head.id = ++sent_events;
 
-         switch (ev->head.kind) {
-         case LIBINPUTSOURCE_POINTER_MOTION:
-             outevent->head.kind = MONITOREVENT_LIBINPUTMOTION;
-             outevent->cases.LibinputMotion.time = ev->cases.pointer_motion.time;
-             outevent->cases.LibinputMotion.dx = ev->cases.pointer_motion.dx;
-             outevent->cases.LibinputMotion.dy = ev->cases.pointer_motion.dy;
-             break;
-         case LIBINPUTSOURCE_POINTER_BUTTON:
-             outevent->head.kind = MONITOREVENT_LIBINPUTBUTTON;
-             outevent->cases.LibinputButton.time = ev->cases.pointer_button.time;
-             outevent->cases.LibinputButton.button = ev->cases.pointer_button.button;
-             outevent->cases.LibinputButton.pressed = ev->cases.pointer_button.pressed;
-             break;
-         case LIBINPUTSOURCE_KEYBOARD_KEY:
-             outevent->head.kind = MONITOREVENT_LIBINPUTKEY;
-             outevent->cases.LibinputKey.time = ev->cases.keyboard_key.time;
-             outevent->cases.LibinputKey.key = ev->cases.keyboard_key.key;
-             outevent->cases.LibinputKey.pressed = ev->cases.keyboard_key.pressed;
-             break;
-	case LIBINPUTSOURCE_HOLE:
-             outevent->head.kind = MONITOREVENT_HOLE;
-	     break;
-         default: assert(0 && "Invalid event"); abort();
-         }
+      switch (ev->head.kind) {
+      case LIBINPUTSOURCE_POINTER_MOTION:
+        outevent->head.kind = MONITOREVENT_LIBINPUTMOTION;
+        outevent->cases.LibinputMotion.time = ev->cases.pointer_motion.time;
+        outevent->cases.LibinputMotion.dx = ev->cases.pointer_motion.dx;
+        outevent->cases.LibinputMotion.dy = ev->cases.pointer_motion.dy;
+        break;
+      case LIBINPUTSOURCE_POINTER_BUTTON:
+        outevent->head.kind = MONITOREVENT_LIBINPUTBUTTON;
+        outevent->cases.LibinputButton.time = ev->cases.pointer_button.time;
+        outevent->cases.LibinputButton.button = ev->cases.pointer_button.button;
+        outevent->cases.LibinputButton.pressed =
+            ev->cases.pointer_button.pressed;
+        break;
+      case LIBINPUTSOURCE_KEYBOARD_KEY:
+        outevent->head.kind = MONITOREVENT_LIBINPUTKEY;
+        outevent->cases.LibinputKey.time = ev->cases.keyboard_key.time;
+        outevent->cases.LibinputKey.key = ev->cases.keyboard_key.key;
+        outevent->cases.LibinputKey.pressed = ev->cases.keyboard_key.pressed;
+        break;
+      case LIBINPUTSOURCE_HOLE:
+        outevent->head.kind = MONITOREVENT_HOLE;
+        break;
+      default:
+        assert(0 && "Invalid event");
+        abort();
+      }
 
-         vms_monitor_buffer_write_finish(monitor_buffer);
-         /* ------------------------- */
+      vms_monitor_buffer_write_finish(monitor_buffer);
+      /* ------------------------- */
 
-         vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
+      vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
     }
-
 
     if (!ARBITER_DROPPED_ && ARBITER_MATCHED_) {
       if (++match_and_no_drop_num >= 40000) {
@@ -1183,24 +1184,23 @@ static int arbiter() {
                               i2);
           printf("***** BUFFER GROUPS *****\n");
           printf("***** WaylandConnections *****\n");
-      	  mtx_lock(&LOCK_WaylandConnections);
-	  for (int i = 0; i < VEC_SIZE(WaylandConnections); ++i)
-          {
-              printf("WaylandConnections[%d].ARGS{", i);
-              printf("pid = %d\n", WaylandConnections[i]->args.pid);
+          mtx_lock(&LOCK_WaylandConnections);
+          for (int i = 0; i < VEC_SIZE(WaylandConnections); ++i) {
+            printf("WaylandConnections[%d].ARGS{", i);
+            printf("pid = %d\n", WaylandConnections[i]->args.pid);
 
-              printf("}\n");
-              char *e1_BG;
-              size_t i1_BG;
-              char *e2_BG;
-              size_t i2_BG;
-              int COUNT_BG_TEMP_ =
-                  vms_arbiter_buffer_peek(WaylandConnections[i]->buffer, 5, (void **)&e1_BG,
-                                          &i1_BG, (void **)&e2_BG, &i2_BG);
-              printf("WaylandConnections[%d].buffer{\n", i);
-              print_buffer_prefix(WaylandConnections[i]->buffer, 1, i1_BG + i2_BG,
-                                  COUNT_BG_TEMP_, e1_BG, i1_BG, e2_BG, i2_BG);
-              printf("}\n");
+            printf("}\n");
+            char *e1_BG;
+            size_t i1_BG;
+            char *e2_BG;
+            size_t i2_BG;
+            int COUNT_BG_TEMP_ = vms_arbiter_buffer_peek(
+                WaylandConnections[i]->buffer, 5, (void **)&e1_BG, &i1_BG,
+                (void **)&e2_BG, &i2_BG);
+            printf("WaylandConnections[%d].buffer{\n", i);
+            print_buffer_prefix(WaylandConnections[i]->buffer, 1, i1_BG + i2_BG,
+                                COUNT_BG_TEMP_, e1_BG, i1_BG, e2_BG, i2_BG);
+            printf("}\n");
           }
           mtx_unlock(&LOCK_WaylandConnections);
         }
@@ -1316,7 +1316,8 @@ int main(int argc, char **argv) {
   }
 
   printf("-- creating buffers\n");
-  monitor_buffer = vms_monitor_buffer_create(sizeof(STREAM_MonitorEvent_out), 512);
+  monitor_buffer =
+      vms_monitor_buffer_create(sizeof(STREAM_MonitorEvent_out), 512);
 
   // init buffer groups
   printf("-- initializing buffer groups\n");
@@ -1346,8 +1347,8 @@ int main(int argc, char **argv) {
   STREAM_MonitorEvent_out *ev;
 
   typedef struct _point {
-	  double x;
-	  double y;
+    double x;
+    double y;
   } point;
 
   VEC(start, point);
@@ -1360,33 +1361,27 @@ int main(int argc, char **argv) {
 
     switch (ev->head.kind) {
     case MONITOREVENT_WAYLANDMOTION:
-	    printf("way.motion(%f, %5.2f, %5.2f)\n",
-		   ev->cases.WaylandMotion.time,
-		   ev->cases.WaylandMotion.x,
-		   ev->cases.WaylandMotion.y
-		   );
-	    break;
+      printf("way.motion(%f, %5.2f, %5.2f)\n", ev->cases.WaylandMotion.time,
+             ev->cases.WaylandMotion.x, ev->cases.WaylandMotion.y);
+      break;
     case MONITOREVENT_WAYLANDBUTTON:
-	    break;
+      break;
     case MONITOREVENT_WAYLANDKEY:
-	    break;
+      break;
     case MONITOREVENT_LIBINPUTMOTION:
-	    printf("lib.motion(%f, %5.2f, %5.2f)\n",
-		   ev->cases.LibinputMotion.time,
-		   ev->cases.LibinputMotion.dx,
-		   ev->cases.LibinputMotion.dy
-		   );
-	    break;
+      printf("lib.motion(%f, %5.2f, %5.2f)\n", ev->cases.LibinputMotion.time,
+             ev->cases.LibinputMotion.dx, ev->cases.LibinputMotion.dy);
+      break;
     case MONITOREVENT_LIBINPUTBUTTON:
-	    break;
+      break;
     case MONITOREVENT_LIBINPUTKEY:
-	    break;
+      break;
     case MONITOREVENT_SEGMENT_START:
-            printf("--- Segment start ---\n");
-	    break;
+      printf("--- Segment start ---\n");
+      break;
     case MONITOREVENT_SEGMENT_END:
-            printf("--- Segment end ---\n");
-	    break;
+      printf("--- Segment end ---\n");
+      break;
     }
 
     vms_monitor_buffer_consume(monitor_buffer, 1);
