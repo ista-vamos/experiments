@@ -1076,6 +1076,9 @@ static int arbiter() {
             outevent->head.kind = MONITOREVENT_SEGMENT_END;
 	    in_segment = false;
 	    break;
+	case WAYLANDCONNECTION_HOLE:
+            outevent->head.kind = MONITOREVENT_HOLE;
+	    break;
 	default: assert(0 && "Invalid event"); abort();
 	}
 
@@ -1143,9 +1146,12 @@ static int arbiter() {
              outevent->cases.LibinputKey.key = ev->cases.keyboard_key.key;
              outevent->cases.LibinputKey.pressed = ev->cases.keyboard_key.pressed;
              break;
+	case LIBINPUTSOURCE_HOLE:
+             outevent->head.kind = MONITOREVENT_HOLE;
+	     break;
          default: assert(0 && "Invalid event"); abort();
          }
-         
+
          vms_monitor_buffer_write_finish(monitor_buffer);
          /* ------------------------- */
 
