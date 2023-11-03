@@ -2,7 +2,7 @@ include ../Makefile.config
 
 ifndef BUFSIZE
 #$(error BUFSIZE variable not set, use `make <target> BUFSIZE=N`)
-BUFSIZE=256
+BUFSIZE=1024
 endif
 
 CPPFLAGS=
@@ -22,7 +22,7 @@ intmap.o: ${COMPILER_CFILES}/intmap.cpp
 	$(CXX) -c $< -o intmap.o
 
 monitor.c: monitor.vl
-	$(VLCC) monitor.vl -b $(BUFSIZE) -o monitor.c
+	$(VLCC) monitor.vl -b $(BUFSIZE) -f 2000 -o monitor.c
 	-clang-format -i monitor.c
 
 monitor: monitor.c $(GENCC) compiler_utils.o
