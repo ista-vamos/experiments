@@ -19,6 +19,8 @@
 
 #include "compiler/cfiles/compiler_utils.h"
 
+#include "monitor.hpp"
+
 #define __vamos_min(a, b) ((a < b) ? (a) : (b))
 #define __vamos_max(a, b) ((a > b) ? (a) : (b))
 
@@ -1361,31 +1363,39 @@ int main(int argc, char **argv) {
 
     switch (ev->head.kind) {
     case MONITOREVENT_WAYLANDMOTION:
-      printf("way.motion(%f, %5.2f, %5.2f)\n", ev->cases.WaylandMotion.time,
-             ev->cases.WaylandMotion.x, ev->cases.WaylandMotion.y);
+      wayland_motion(ev->cases.WaylandMotion.time, ev->cases.WaylandMotion.x, ev->cases.WaylandMotion.y);
       break;
     case MONITOREVENT_WAYLANDBUTTON:
+      wayland_button(ev->cases.WaylandButton.time, ev->cases.WaylandButton.button, ev->cases.WaylandButton.pressed);
       break;
     case MONITOREVENT_WAYLANDKEY:
+      wayland_key(ev->cases.WaylandKey.time, ev->cases.WaylandKey.key, ev->cases.WaylandKey.pressed);
       break;
     case MONITOREVENT_LIBINPUTMOTION:
-      printf("lib.motion(%f, %5.2f, %5.2f)\n", ev->cases.LibinputMotion.time,
-             ev->cases.LibinputMotion.dx, ev->cases.LibinputMotion.dy);
+      libinput_motion(ev->cases.LibinputMotion.time, ev->cases.LibinputMotion.dx, ev->cases.LibinputMotion.dy);
       break;
     case MONITOREVENT_LIBINPUTBUTTON:
+      libinput_button(ev->cases.LibinputButton.time, ev->cases.LibinputButton.button, ev->cases.LibinputButton.pressed);
       break;
     case MONITOREVENT_LIBINPUTKEY:
+      libinput_key(ev->cases.LibinputKey.time, ev->cases.LibinputKey.key, ev->cases.LibinputKey.pressed);
       break;
     case MONITOREVENT_SEGMENT_START:
-      printf("--- Segment start ---\n");
+      segment_start();
       break;
     case MONITOREVENT_SEGMENT_END:
-      printf("--- Segment end ---\n");
+      segment_end();
+      break;
+    case MONITOREVENT_HOLE:
+      hole();
       break;
     }
 
     vms_monitor_buffer_consume(monitor_buffer, 1);
   }
+
+  // tear down the monitor
+  end();
 
   printf("-- cleaning up\n");
   VEC_DESTROY(WaylandConnections);

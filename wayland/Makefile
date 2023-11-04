@@ -25,8 +25,11 @@ monitor-gen.c: monitor.vl
 	$(VLCC) monitor.vl -b $(BUFSIZE) -f 2000 -o monitor-gen.c
 	-clang-format -i monitor-gen.c
 
-monitor: monitor.c $(GENCC) compiler_utils.o
-	$(GENCC) monitor.c compiler_utils.o
+monitor.o: monitor.cpp
+	$(CXX) -c $(CXXFLAGS) monitor.cpp
+
+monitor: monitor.c monitor.o $(GENCC) compiler_utils.o
+	$(GENCC) monitor.c monitor.o compiler_utils.o -lstdc++
 
 # only compile, for testing
 compile: compiler_utils.o
