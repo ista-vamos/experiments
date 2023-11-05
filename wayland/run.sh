@@ -5,6 +5,11 @@ set -e
 cd $(dirname $0)
 source ../setup-vars.sh
 
+if [ ! -f "$1" ]; then
+	echo "First argument is the file with events"
+	exit 1
+fi
+
 TOUCHPAD=/dev/input/event12
 WIDTH=1920
 HEIGHT=1080
@@ -18,8 +23,6 @@ sleep 1
 export WAYLAND_DISPLAY=wayland-1
 
 $vamos_sources_SRCDIR/src/wldbg/wldbg-source &>wldbg.log &
-
-sleep 1
 $vamos_sources_SRCDIR/src/libinput/vsrc-libinput --shmkey /libinput &>libinput.log &
 LIBINPUT_PID=$!
 

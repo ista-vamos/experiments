@@ -1002,9 +1002,9 @@ static int arbiter() {
   bool in_segment = false;
 
   bool had_wayland_clients = false;
+  size_t did_nothing_nr = 0;
 
   while (!are_streams_done()) {
-    ARBITER_MATCHED_ = false;
     ARBITER_DROPPED_ = false;
 
     mtx_lock(&LOCK_WaylandConnections);
@@ -1096,6 +1096,7 @@ static int arbiter() {
 
       vms_monitor_buffer_write_finish(monitor_buffer);
       vms_arbiter_buffer_drop(lbuffer, 1);
+      ARBITER_DROPPED_ = 1;
     } else {
       /* we still have no wayland events, drop old libinput events */
       STREAM_LibinputSource_out *ev;
@@ -1112,6 +1113,7 @@ static int arbiter() {
           double time2 = ev->cases.pointer_motion.time;
           if ((newest_time - time2) > TAU) {
             vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
+            ARBITER_DROPPED_ = 1;
             //printf("drop old libinput: %f .. %f\n", newest_time, time2);
           } else {
             break;
@@ -1130,6 +1132,7 @@ static int arbiter() {
       double time2 = ev->cases.pointer_motion.time;
       if (!in_segment && fabs(current_time - time2) > TAU) {
         vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
+        ARBITER_DROPPED_ = 1;
         //printf("drop old libinput (2): %f .. %f\n", current_time, time2);
         continue;
       }
@@ -1171,53 +1174,19 @@ static int arbiter() {
       /* ------------------------- */
 
       vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
+      ARBITER_DROPPED_ = 1;
     }
 
-    if (!ARBITER_DROPPED_ && ARBITER_MATCHED_) {
-      if (++match_and_no_drop_num >= 40000) {
-        if (match_and_no_drop_num == 40000) {
-          fprintf(stderr, "WARNING: arbiter matched 40000 times without "
-                          "consuming an event, that might suggest a problem\n");
-        }
+    if (!ARBITER_DROPPED_)
+	    ++did_nothing_nr;
+    else
+	    did_nothing_nr = 0;
 
-        /* do not burn CPU as we might expect another void iteration */
-        sleep_ns(500);
-
-        if (++match_and_no_drop_num > 60000) {
-          fprintf(stderr, "\033[31mWARNING: arbiter matched 60000 times "
-                          "without consuming an event!\033[0m\n");
-          match_and_no_drop_num = 0;
-          void *e1, *e2;
-          size_t i1, i2;
-          int count_;
-          fprintf(stderr, "Prefix of 'Libinput':\n");
-          count_ = vms_arbiter_buffer_peek(BUFFER_Libinput, 5, (void **)&e1,
-                                           &i1, (void **)&e2, &i2);
-          print_buffer_prefix(BUFFER_Libinput, 2, i1 + i2, count_, e1, i1, e2,
-                              i2);
-          printf("***** BUFFER GROUPS *****\n");
-          printf("***** WaylandConnections *****\n");
-          mtx_lock(&LOCK_WaylandConnections);
-          for (int i = 0; i < VEC_SIZE(WaylandConnections); ++i) {
-            printf("WaylandConnections[%d].ARGS{", i);
-            printf("pid = %d\n", WaylandConnections[i]->args.pid);
-
-            printf("}\n");
-            char *e1_BG;
-            size_t i1_BG;
-            char *e2_BG;
-            size_t i2_BG;
-            int COUNT_BG_TEMP_ = vms_arbiter_buffer_peek(
-                WaylandConnections[i]->buffer, 5, (void **)&e1_BG, &i1_BG,
-                (void **)&e2_BG, &i2_BG);
-            printf("WaylandConnections[%d].buffer{\n", i);
-            print_buffer_prefix(WaylandConnections[i]->buffer, 1, i1_BG + i2_BG,
-                                COUNT_BG_TEMP_, e1_BG, i1_BG, e2_BG, i2_BG);
-            printf("}\n");
-          }
-          mtx_unlock(&LOCK_WaylandConnections);
-        }
-      }
+    if (did_nothing_nr > 1000) {
+	    sleep_ns(10);
+	    if (did_nothing_nr > 10000) {
+	    	sleep_ms(10);
+    	    }
     }
   }
   vms_monitor_set_finished(monitor_buffer);

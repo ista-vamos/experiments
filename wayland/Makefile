@@ -12,6 +12,7 @@ ifndef DELTA
 $(error DELTA variable not set, use `make <target> DELTA=N`)
 endif
 
+FREQ=10
 
 
 CPPFLAGS=-g
