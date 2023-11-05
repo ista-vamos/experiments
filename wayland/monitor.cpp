@@ -4,7 +4,9 @@
 #include <vector>
 
 #include "monitor.hpp"
+
 #define TAU 1000
+#define DELTA 20
 
 bool waiting_for_segment = true;
 
@@ -67,7 +69,7 @@ void wayland_motion(double time, double x, double y) {
     if (waiting_for_segment)
         return;
 
-    std::cout << "way.motion(" << time << ", " << x << "," <<  y << ")\n";
+    //std::cout << "way.motion(" << time << ", " << x << "," <<  y << ")\n";
 
     if (pointer_state.fresh) {
         pointer_state.fresh = false;
@@ -75,7 +77,7 @@ void wayland_motion(double time, double x, double y) {
         return;
     }
 
-    if (!pointer_state.lib_p.close_to(Point{x, y}, 1)) {
+    if (!pointer_state.lib_p.close_to(Point{x, y}, DELTA)) {
         std::cerr << "ERROR: Pointer motion diverged: "
             << "{" << pointer_state.way_p.x << ", " << pointer_state.way_p.y << "}"
             << " -> "
@@ -94,7 +96,7 @@ void libinput_motion(double time, double dx, double dy) {
     if (waiting_for_segment)
         return;
 
-    std::cout << "lib.motion(" << time << ", " << dx << "," <<  dy << ")\n";
+    //std::cout << "lib.motion(" << time << ", " << dx << "," <<  dy << ")\n";
 
     pointer_state.lib_p.x += dx;
     pointer_state.lib_p.y += dy;

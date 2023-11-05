@@ -22,7 +22,7 @@ intmap.o: ${COMPILER_CFILES}/intmap.cpp
 	$(CXX) -c $< -o intmap.o
 
 monitor-gen.c: monitor.vl
-	$(VLCC) monitor.vl -b $(BUFSIZE) -f 2000 -o monitor-gen.c
+	$(VLCC) monitor.vl -b $(BUFSIZE) -f 100 -o monitor-gen.c
 	-clang-format -i monitor-gen.c
 
 monitor.o: monitor.cpp

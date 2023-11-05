@@ -21,6 +21,10 @@
 
 #include "monitor.hpp"
 
+#define WAYLAND_BUFFER_SIZE 8
+#define LIBINPUT_BUFFER_SIZE 8
+#define MONITOR_BUFFER_SIZE (WAYLAND_BUFFER_SIZE + LIBINPUT_BUFFER_SIZE)
+
 #define __vamos_min(a, b) ((a < b) ? (a) : (b))
 #define __vamos_max(a, b) ((a > b) ? (a) : (b))
 
@@ -359,9 +363,6 @@ VEC(WaylandConnections, BG_data *);
 // instantiate the structs that store the variables shared among events in the
 // same struct
 
-int arbiter_counter; // int used as id for the events that the arbiter
-                     // generates, it increases for every event it generates
-
 static bool ARBITER_MATCHED_ =
     false; // in each iteration we set this to true if it mathces
 static bool ARBITER_DROPPED_ =
@@ -567,7 +568,7 @@ int PERF_LAYER_WaylandProcessor(vms_arbiter_buffer *buffer) {
         abort();
       }
       vms_arbiter_buffer *temp_buffer = vms_arbiter_buffer_create(
-          ev_source_temp, sizeof(STREAM_WaylandConnection_out), 1024);
+          ev_source_temp, sizeof(STREAM_WaylandConnection_out), WAYLAND_BUFFER_SIZE);
 
       // vms_stream_register_all_events(ev_source_temp);
       if (vms_stream_register_event(ev_source_temp, "pointer_motion",
@@ -1000,9 +1001,19 @@ static int arbiter() {
   double current_time = 0;
   bool in_segment = false;
 
+  bool had_wayland_clients = false;
+
   while (!are_streams_done()) {
     ARBITER_MATCHED_ = false;
     ARBITER_DROPPED_ = false;
+
+    mtx_lock(&LOCK_WaylandConnections);
+    had_wayland_clients |= (VEC_SIZE(WaylandConnections) > 0);
+    mtx_unlock(&LOCK_WaylandConnections);
+
+    if (had_wayland_clients &&
+        vms_arbiter_buffer_is_done(BUFFER_Clients))
+	    done();
 
     size_t sent_events = 0;
     STREAM_MonitorEvent_out *outevent;
@@ -1101,7 +1112,7 @@ static int arbiter() {
           double time2 = ev->cases.pointer_motion.time;
           if ((newest_time - time2) > TAU) {
             vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-            printf("drop old libinput: %f .. %f\n", newest_time, time2);
+            //printf("drop old libinput: %f .. %f\n", newest_time, time2);
           } else {
             break;
           }
@@ -1119,7 +1130,7 @@ static int arbiter() {
       double time2 = ev->cases.pointer_motion.time;
       if (!in_segment && fabs(current_time - time2) > TAU) {
         vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-        printf("drop old libinput (2): %f .. %f\n", current_time, time2);
+        //printf("drop old libinput (2): %f .. %f\n", current_time, time2);
         continue;
       }
 
@@ -1242,7 +1253,6 @@ static void setup_signals() {
 int main(int argc, char **argv) {
   setup_signals();
 
-  arbiter_counter = 10;
   // startup code
 
   // init. event sources streams
@@ -1289,7 +1299,7 @@ int main(int argc, char **argv) {
   EV_SOURCE_Libinput =
       vms_stream_create_from_argv("Libinput", argc, argv, &hh_Libinput);
   BUFFER_Libinput = vms_arbiter_buffer_create(
-      EV_SOURCE_Libinput, sizeof(STREAM_LibinputSource_out), 1024);
+      EV_SOURCE_Libinput, sizeof(STREAM_LibinputSource_out), LIBINPUT_BUFFER_SIZE);
 
   // register events in Libinput
   if (vms_stream_register_event(EV_SOURCE_Libinput, "pointer_motion",
@@ -1319,7 +1329,7 @@ int main(int argc, char **argv) {
 
   printf("-- creating buffers\n");
   monitor_buffer =
-      vms_monitor_buffer_create(sizeof(STREAM_MonitorEvent_out), 512);
+      vms_monitor_buffer_create(sizeof(STREAM_MonitorEvent_out), MONITOR_BUFFER_SIZE);
 
   // init buffer groups
   printf("-- initializing buffer groups\n");
