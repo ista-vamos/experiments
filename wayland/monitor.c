@@ -121,7 +121,7 @@ enum MonitorEvent_kinds {
   MONITOREVENT_HOLE = VMS_EVENT_HOLE_KIND,
 };
 
-#define TAU 1000
+#define TAU 200
 
 // declare hole structs
 

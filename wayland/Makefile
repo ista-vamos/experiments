@@ -5,8 +5,8 @@ ifndef BUFSIZE
 BUFSIZE=1024
 endif
 
-CPPFLAGS=
-CFLAGS= #-O3
+CPPFLAGS=-g
+CFLAGS=-g #-O3
 
 VLCC=python3 ${vamos_compiler_SRCDIR}/compiler/main.py
 GENCC=${vamos_compiler_SRCDIR}/gen/compile.sh

@@ -1,12 +1,12 @@
 #include <iostream>
 #include <cstdint>
 #include <set>
-#include <vector>
+#include <deque>
 
 #include "monitor.hpp"
 
-#define TAU 1000
-#define DELTA 20
+#define TAU 100
+#define DELTA 40
 
 bool waiting_for_segment = true;
 
@@ -48,13 +48,22 @@ struct Point {
     double x;
     double y;
 
+    Point(double x, double y): x(x), y(y) {}
+    Point() = default;
+
     bool operator<(const Point& rhs) const {
         return x < rhs.x && y < rhs.y;
     }
 
-    bool close_to(const Point& rhs, double D = 10) const {
+    bool close_to(const Point& rhs, double D = DELTA) const {
         return ((rhs.x - x)*(rhs.x - x) + (rhs.y - y)*(rhs.y -y)) <= D*D;
     }
+};
+
+struct TimedPoint: public Point {
+    double time;
+
+    TimedPoint(double time, double x, double y): Point(x,y), time(time) {}
 };
 
 struct PointerState {
@@ -62,7 +71,24 @@ struct PointerState {
     Point way_p;
     Point lib_p;
 
-    std::vector<Point> surrounding;
+    // we must remember some history of libinput motion events, because they
+    // may come unaligned with wayland motion events
+    std::deque<TimedPoint> history;
+
+    void add_history(double time, double dx, double dy) {
+        // clear the queue from old events
+        while (!history.empty()) {
+            auto& top = history.front();
+            if (time - top.time > TAU) {
+                history.pop_front();
+            } else
+                break;
+        }
+        history.push_back(TimedPoint{time, dx, dy});
+    }
+
+    // sum all point in history -- it gives us the
+    // uncertainty delta in which the final point can be
 } pointer_state;
 
 void wayland_motion(double time, double x, double y) {
@@ -77,13 +103,14 @@ void wayland_motion(double time, double x, double y) {
         return;
     }
 
-    if (!pointer_state.lib_p.close_to(Point{x, y}, DELTA)) {
+    auto target = Point{x, y};
+    if (!pointer_state.lib_p.close_to(target, DELTA)) {
         std::cerr << "ERROR: Pointer motion diverged: "
-            << "{" << pointer_state.way_p.x << ", " << pointer_state.way_p.y << "}"
-            << " -> "
-            << "{" << pointer_state.lib_p.x << ", " << pointer_state.lib_p.y << "}"
-            << " not close to "
-            << "{" << x << ", " << y << "}\n";
+                  << "{" << pointer_state.way_p.x << ", " << pointer_state.way_p.y << "}"
+                  << " -> "
+                  << "{" << pointer_state.lib_p.x << ", " << pointer_state.lib_p.y << "}"
+                  << " not close to target "
+                  << "{" << x << ", " << y << "}\n";
     }
 
     pointer_state.way_p = pointer_state.lib_p = Point{x, y};
@@ -100,6 +127,8 @@ void libinput_motion(double time, double dx, double dy) {
 
     pointer_state.lib_p.x += dx;
     pointer_state.lib_p.y += dy;
+
+    pointer_state.add_history(time, dx, dy);
 
     check_state(time);
 }
@@ -184,6 +213,7 @@ void hole() {
     waiting_for_segment = true;
     waiting_keys.clear();
     waiting_buttons.clear();
+    pointer_state.history.clear();
 
     std::cout << "--- hole ---\n";
 }
