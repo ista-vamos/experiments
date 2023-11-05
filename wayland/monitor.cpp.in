@@ -5,8 +5,8 @@
 
 #include "monitor.hpp"
 
-#define TAU 100
-#define DELTA 40
+#define TAU @TAU@
+#define DELTA @DELTA@
 
 bool waiting_for_segment = true;
 

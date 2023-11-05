@@ -21,9 +21,10 @@
 
 #include "monitor.hpp"
 
-#define WAYLAND_BUFFER_SIZE 8
-#define LIBINPUT_BUFFER_SIZE 8
+#define WAYLAND_BUFFER_SIZE @WAYLAND_BUFFER_SIZE@
+#define LIBINPUT_BUFFER_SIZE @LIBINPUT_BUFFER_SIZE@
 #define MONITOR_BUFFER_SIZE (WAYLAND_BUFFER_SIZE + LIBINPUT_BUFFER_SIZE)
+#define TAU @TAU@
 
 #define __vamos_min(a, b) ((a < b) ? (a) : (b))
 #define __vamos_max(a, b) ((a > b) ? (a) : (b))
@@ -121,7 +122,6 @@ enum MonitorEvent_kinds {
   MONITOREVENT_HOLE = VMS_EVENT_HOLE_KIND,
 };
 
-#define TAU 200
 
 // declare hole structs
 
