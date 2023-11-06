@@ -71,9 +71,11 @@ struct PointerState {
     Point way_p;
     Point lib_p;
 
+
     // we must remember some history of libinput motion events, because they
     // may come unaligned with wayland motion events
     std::deque<TimedPoint> history;
+    std::deque<TimedPoint> saved_history;
 
     void add_history(double time, double dx, double dy) {
         // clear the queue from old events
@@ -87,8 +89,6 @@ struct PointerState {
         history.push_back(TimedPoint{time, dx, dy});
     }
 
-    // sum all point in history -- it gives us the
-    // uncertainty delta in which the final point can be
 } pointer_state;
 
 static size_t motion_comparisons;
@@ -110,6 +110,7 @@ void wayland_motion(double time, double x, double y) {
     if (pointer_state.fresh) {
         pointer_state.fresh = false;
         pointer_state.way_p = pointer_state.lib_p = Point{x, y};
+        pointer_state.saved_history = pointer_state.history;
         return;
     }
 
@@ -122,18 +123,34 @@ void wayland_motion(double time, double x, double y) {
 
     auto target = Point{x, y};
     if (!pointer_state.lib_p.close_to(target, DELTA)) {
-        ++errors;
-        std::cerr << "ERROR: Pointer motion diverged: "
-                  << "{" << pointer_state.way_p.x << ", " << pointer_state.way_p.y << "}"
-                  << " -> "
-                  << "{" << pointer_state.lib_p.x << ", " << pointer_state.lib_p.y << "}"
-                  << " not close to target "
-                  << "{" << x << ", " << y << "}\n";
+        bool ok = false;
+        auto tmp = pointer_state.lib_p;
+        for (auto it = pointer_state.saved_history.rbegin(),
+                  et = pointer_state.saved_history.rend();
+                it != et; ++it) {
+            tmp.x += it->x;
+            tmp.y += it->y;
+            if (tmp.close_to(target, DELTA)) {
+                ok = true;
+                break;
+            }
+        }
+
+        if (!ok) {
+            ++errors;
+            std::cerr << "ERROR: Pointer motion diverged: "
+                      << "{" << pointer_state.way_p.x << ", " << pointer_state.way_p.y << "}"
+                      << " -> "
+                      << "{" << pointer_state.lib_p.x << ", " << pointer_state.lib_p.y << "}"
+                      << " not close to target "
+                      << "{" << x << ", " << y << "}\n";
+        }
     } else {
         ++motions_matched;
     }
 
     pointer_state.way_p = pointer_state.lib_p = Point{x, y};
+    pointer_state.saved_history = pointer_state.history;
 
     check_state(time);
 }

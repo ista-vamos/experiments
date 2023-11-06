@@ -10,7 +10,7 @@ if [ ! -f "$1" ]; then
 	exit 1
 fi
 
-TOUCHPAD=/dev/input/event12
+TOUCHPAD=/dev/input/event13
 WIDTH=1920
 HEIGHT=1080
 APP=weston-terminal
@@ -38,9 +38,10 @@ T2_PID=$!
 
 xdotool mousemove --sync $((WIDTH/2)) $((HEIGHT/2))
 evemu-play $TOUCHPAD < $1
-#wait $WESTON_PID
 
 kill -INT $T1_PID
 kill -INT $T2_PID
 kill -INT $WESTON_PID
-#kill -INT $LIBINPUT_PID
+
+wait $MONITOR_PID
+kill -KILL $LIBINPUT_PID || true

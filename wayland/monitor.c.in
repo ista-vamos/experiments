@@ -1005,7 +1005,7 @@ static int arbiter() {
   size_t did_nothing_nr = 0;
 
   while (!are_streams_done()) {
-    ARBITER_DROPPED_ = false;
+    //ARBITER_DROPPED_ = false;
 
     mtx_lock(&LOCK_WaylandConnections);
     had_wayland_clients |= (VEC_SIZE(WaylandConnections) > 0);
@@ -1096,7 +1096,7 @@ static int arbiter() {
 
       vms_monitor_buffer_write_finish(monitor_buffer);
       vms_arbiter_buffer_drop(lbuffer, 1);
-      ARBITER_DROPPED_ = 1;
+      //ARBITER_DROPPED_ = 1;
     } else {
       /* we still have no wayland events, drop old libinput events */
       STREAM_LibinputSource_out *ev;
@@ -1113,7 +1113,7 @@ static int arbiter() {
           double time2 = ev->cases.pointer_motion.time;
           if ((newest_time - time2) > TAU) {
             vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-            ARBITER_DROPPED_ = 1;
+            //ARBITER_DROPPED_ = 1;
             //printf("drop old libinput: %f .. %f\n", newest_time, time2);
           } else {
             break;
@@ -1132,7 +1132,7 @@ static int arbiter() {
       double time2 = ev->cases.pointer_motion.time;
       if (!in_segment && fabs(current_time - time2) > TAU) {
         vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-        ARBITER_DROPPED_ = 1;
+        //ARBITER_DROPPED_ = 1;
         //printf("drop old libinput (2): %f .. %f\n", current_time, time2);
         continue;
       }
@@ -1174,9 +1174,10 @@ static int arbiter() {
       /* ------------------------- */
 
       vms_arbiter_buffer_drop(BUFFER_Libinput, 1);
-      ARBITER_DROPPED_ = 1;
+      //ARBITER_DROPPED_ = 1;
     }
 
+    /*
     if (!ARBITER_DROPPED_)
 	    ++did_nothing_nr;
     else
@@ -1188,6 +1189,7 @@ static int arbiter() {
 	    	sleep_ms(10);
     	    }
     }
+    */
   }
   vms_monitor_set_finished(monitor_buffer);
   return 0;
