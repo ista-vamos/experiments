@@ -1,4 +1,4 @@
-stream type ThreadEvent(threadid: int, inhole : int16_t, nonecount : uint16_t, nextts: uint64_t, nonets: uint64_t, optskipstart : uint64_t)
+stream type ThreadEvent
 {
     read(timestamp: uint64_t, addr : intptr_t);
     write(timestamp: uint64_t, addr : intptr_t);
@@ -12,9 +12,12 @@ stream type ThreadEvent(threadid: int, inhole : int16_t, nonecount : uint16_t, n
     join(timestamp: uint64_t, threadid: uint64_t);
     write_n(timestamp: uint64_t, addr : intptr_t, size: size_t);
     read_n(timestamp: uint64_t, addr : intptr_t, size: size_t);
+}
+stream type ThreadEventH(threadid: int, inhole : int16_t, nonecount : uint16_t, nextts: uint64_t, nonets: uint64_t, optskipstart : uint64_t) extends ThreadEvent
+{
     my_hole(n : uint64_t, firstts : uint64_t, lastts: uint64_t);
 }
-stream processor TEProcessor(threadid : int) : ThreadEvent(threadid, 0, 0, 0, 0, 0) -> ThreadEvent(threadid, 0, 0, 0, 0, 0) to autodrop(@BUFSIZE,256)
+stream processor TEProcessor(threadid : int) : ThreadEvent() -> ThreadEventH(threadid, 0, 0, 0, 0, 0) to autodrop(@BUFSIZE,256)
 {
     on fork(ts, ntid) creates ThreadEvent process using TEProcessor(ntid) include in Threads forward;
     hole my_hole
@@ -25,7 +28,7 @@ stream processor TEProcessor(threadid : int) : ThreadEvent(threadid, 0, 0, 0, 0,
     }
 }
 
-buffer group Threads : ThreadEvent order by nextts
+buffer group Threads : ThreadEventH order by nextts
 event source Program : ThreadEvent process using TEProcessor(0)  include in Threads
 
 stream type GlobalEvent
