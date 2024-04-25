@@ -1,0 +1,435 @@
+stream type ThreadEvent
+{
+    read(timestamp: uint64_t, addr : intptr_t);
+    write(timestamp: uint64_t, addr : intptr_t);
+    atomicread(timestamp: uint64_t, addr : intptr_t, mode : int);
+    atomicwrite(timestamp: uint64_t, addr : intptr_t, mode : int);
+    lock(timestamp: uint64_t, addr : intptr_t);
+    unlock(timestamp: uint64_t, addr : intptr_t);
+    alloc(timestamp : uint64_t, addr : intptr_t, size : size_t);
+    free(timestamp: uint64_t, addr : intptr_t);
+    fork(timestamp: uint64_t, newthreadid: uint64_t) creates ThreadEvent;
+    join(timestamp: uint64_t, threadid: uint64_t);
+    write_n(timestamp: uint64_t, addr : intptr_t, size: size_t);
+    read_n(timestamp: uint64_t, addr : intptr_t, size: size_t);
+}
+stream type ThreadEventH(threadid: int, inhole : int16_t, nonecount : uint16_t, nextts: uint64_t, nonets: uint64_t, optskipstart : uint64_t) extends ThreadEvent
+{
+    my_hole(n : uint64_t, firstts : uint64_t, lastts: uint64_t);
+}
+stream processor TEProcessor(threadid : int) : ThreadEvent() -> ThreadEventH(threadid, 0, 0, 0, 0, 0) to autodrop(@BUFSIZE,256)
+{
+    on fork(ts, ntid) creates ThreadEvent process using TEProcessor(ntid) include in Threads forward;
+    hole my_hole
+    {
+        uint64_t n = COUNT(*);
+        uint64_t firstts = MIN(read.timestamp, write.timestamp, read_n.timestamp, write_n.timestamp, atomicread.timestamp, atomicwrite.timestamp, lock.timestamp, unlock.timestamp, alloc.timestamp, free.timestamp, fork.timestamp, join.timestamp);
+        uint64_t lastts = MAX(read.timestamp, write.timestamp, read_n.timestamp, write_n.timestamp, atomicread.timestamp, atomicwrite.timestamp, lock.timestamp, unlock.timestamp, alloc.timestamp, free.timestamp, fork.timestamp, join.timestamp);
+    }
+}
+
+buffer group Threads : ThreadEventH order by nextts
+event source Program : ThreadEvent process using TEProcessor(0)  include in Threads
+
+stream type GlobalEvent
+{
+    read(tid: int, timestamp: uint64_t, addr : intptr_t);
+    write(tid: int, timestamp: uint64_t, addr : intptr_t);
+    read_sized(tid: int, timestamp: uint64_t, addr : intptr_t, size: size_t);
+    write_sized(tid: int, timestamp: uint64_t, addr : intptr_t, size: size_t);
+    lock(tid: int, timestamp: uint64_t, addr : intptr_t);
+    unlock(tid: int, timestamp: uint64_t, addr : intptr_t);
+    fork(tid: int, timestamp: uint64_t, newthreadid: int);
+    join(tid: int, timestamp: uint64_t, threadid: int);
+    skipstart(tid: int, timestamp : uint64_t);
+    skipend(tid: int, timestamp : uint64_t);
+    done_(tid: int, timestamp : uint64_t);
+}
+globals
+$$
+    //#define DEBUGPRINT
+
+    #include <limits.h>
+    #include "monitor.h"
+    uint64_t nextts=1;
+    uint64_t leastts=ULLONG_MAX;
+    uint64_t skipcount=0;
+    uint16_t nonebarrier=1;
+    uint64_t nonecycles=0;
+    uint64_t dropcount=0;
+    uint64_t holescount=0;
+    int seenNone=0;
+    int findleast=0;
+    #define min(a, b) __vamos_min(a, b)
+    #define max(a, b) __vamos_max(a, b)
+$$
+
+cleanup
+$$
+    fprintf(stderr, "Dropped %lu events in %lu holes\n", dropcount, holescount);
+    fprintf(stderr, "Found %lu races\n", GetRaceCount());
+$$
+
+loopdebug
+$$
+    printf("nextts = %lu\n", nextts);
+    printf("leastts = %lu\n", leastts);
+    printf("findleast = %i\n", findleast);
+    printf("seenNone = %i\n", seenNone);
+    printf("nonecycles = %lu\n", nonecycles);
+    printf("skipcount = %lu\n", skipcount);
+    printf("dropcount = %lu\n", dropcount);
+    printf("holescount = %lu\n", holescount);
+$$
+
+arbiter : GlobalEvent
+{
+    choose first 9999 T from Threads where $$ ($T.nextts; <= nextts && $T.nonets; < nextts) || (findleast && $T.nextts; < leastts) $$
+    {
+        on T : | read(ts,addr)
+        $$
+            #ifdef DEBUGPRINT
+            printf("read(tid=%i, ts=%lu, addr=%p)\n", $T.threadid;, ts, (void*)addr);
+            #endif
+            if(ts==nextts)
+            {
+                $yield read($T.threadid;, ts, addr);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                //printf("%lu/%lu\n",ts,nextts);
+                $drop 1 from T;
+            }
+        $$
+        on T : | write(ts,addr)
+        $$
+            #ifdef DEBUGPRINT
+            printf("write(tid=%i, ts=%lu, addr=%p)\n", $T.threadid;, ts, (void*)addr);
+            #endif
+            //printf("write! %lu/%lu\n",ts,nextts);
+            if(ts==nextts)
+            {
+                $yield write($T.threadid;, ts, addr);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                $drop 1 from T;
+            }
+        $$
+        on T : | read_n(ts,addr, size)
+        $$
+            #ifdef DEBUGPRINT
+            printf("read_n(tid=%i, ts=%lu, addr=%p, size=%lu)\n", $T.threadid;, ts, (void*)addr, size);
+            #endif
+            if(ts==nextts)
+            {
+                $yield read_sized($T.threadid;, ts, addr, size);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                //printf("%lu/%lu\n",ts,nextts);
+                $drop 1 from T;
+            }
+        $$
+        on T : | write_n(ts,addr,size)
+        $$
+            #ifdef DEBUGPRINT
+            printf("write_n(tid=%i, ts=%lu, addr=%p. size=%lu)\n", $T.threadid;, ts, (void*)addr, size);
+            #endif
+            if(ts==nextts)
+            {
+                $yield write_sized($T.threadid;, ts, addr, size);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                $drop 1 from T;
+            }
+        $$
+
+        on T : | lock(ts,addr)
+        $$
+            #ifdef DEBUGPRINT
+            printf("lock(tid=%i, ts=%lu, addr=%p)\n", $T.threadid;, ts, (void*)addr);
+            #endif
+            if(ts==nextts)
+            {
+                $yield lock($T.threadid;, ts, addr);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                $drop 1 from T;
+            }
+        $$
+        on T : | unlock(ts,addr)
+        $$
+            #ifdef DEBUGPRINT
+            printf("unlock(tid=%i, ts=%lu, addr=%p)\n", $T.threadid;, ts, (void*)addr);
+            #endif
+            if(ts==nextts)
+            {
+                $yield unlock($T.threadid;, ts, addr);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                $drop 1 from T;
+            }
+        $$
+        on T : | fork(ts,tid)
+        $$
+            #ifdef DEBUGPRINT
+            printf("fork(tid=%i, ts=%lu, otid=%i)\n", $T.threadid;, ts, tid);
+            #endif
+            if(ts==nextts)
+            {
+                $yield fork($T.threadid;, ts, tid);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                $drop 1 from T;
+            }
+        $$
+        on T : | join(ts,tid)
+        $$
+            #ifdef DEBUGPRINT
+            printf("join(tid=%i, ts=%lu, otid=%i)\n", $T.threadid;, ts, tid);
+            #endif
+            if(ts==nextts)
+            {
+                $yield join($T.threadid;, ts, tid);
+                $drop 1 from T;
+                nextts++;
+                leastts=ULLONG_MAX;
+                findleast=0;
+            }
+            else if(ts>nextts)
+            {
+                $T.nextts;=ts;
+                leastts=min(leastts, ts);
+            }
+            else
+            {
+                $drop 1 from T;
+            }
+        $$
+        on T : | my_hole(n, mints, maxts)
+        $$
+            #ifdef DEBUGPRINT
+            printf("\033[36m//[a] my_hole(n=%d, tid=%i, mints=%lu, maxts=%lu)\033[0m\n", n, $T.threadid;, mints, maxts);
+            #endif
+            if(!$T.inhole;)
+            {
+                if(mints<=nextts)
+                {
+                    skipcount+=n;
+                    dropcount+=n;
+                    $yield skipstart($T.threadid;, nextts);
+                    $T.nextts;=maxts;
+                    if(maxts<=nextts)
+                    {
+                        $yield skipend($T.threadid;, nextts);
+                        $drop 1 from T;
+                        ++holescount;
+                        leastts=ULLONG_MAX;
+                    }
+                    else
+                    {
+                        $T.inhole;=1;
+                        leastts=maxts;
+                    }
+                    if(mints==nextts)
+                    {
+                        nextts++;
+                    }
+                }
+                else
+                {
+                    $T.nextts;=mints;
+                    leastts=min(leastts, mints);
+                }
+            }
+            if($T.inhole;)
+            {
+                if(maxts==nextts)
+                {
+                    $yield skipend($T.threadid;, maxts);
+                    $drop 1 from T;
+                    ++holescount;
+                    nextts++;
+                    leastts=ULLONG_MAX;
+                    $T.inhole;=0;
+                }
+                else
+                {
+                    $T.nextts;=maxts;
+                    leastts=min(leastts, maxts);
+                }
+            }
+        $$
+        on T : done
+        $$
+            #ifdef DEBUGPRINT
+            printf("done(tid=%i)\n", $T.threadid;);
+            #endif
+            if($T.nonets;>0)
+            {
+                seenNone--;
+            }
+            $yield done_($T.threadid;, nextts);
+            $remove T from Threads;
+        $$
+        on T : nothing where $$ (!findleast) || $T.nonets;<nextts $$
+        $$
+            if($T.nonets;==0)
+            {
+                seenNone++;
+            }
+            $T.nonets;=nextts;
+        $$
+    }
+
+    choose first 9999 T from Threads where $$ $T.nonets;>0 $$
+    {
+        on T : 1
+        $$
+            $T.nonets;=0;
+            seenNone--;
+        $$
+    }
+
+    always
+    $$
+        if(!findleast)
+        {
+            findleast=1;
+        }
+        else
+        {
+            findleast=0;
+            if(leastts!=ULONG_MAX && (seenNone==0 || nonecycles>1000000) && skipcount >= leastts - nextts)
+            {
+                skipcount-=(leastts-nextts);
+                nextts=leastts;
+                nonecycles=0;
+            }
+            else
+            {                
+                nonecycles++;
+            }
+        }
+    $$
+}
+
+monitor {
+    on read(tid, timestamp, addr) where $$ true $$
+    $$
+        monitor_handle_read(tid, timestamp, addr);
+    $$
+    on read_sized(tid, timestamp, addr, size) where $$ true $$
+    $$
+        monitor_handle_read_many(tid, timestamp, addr, size);
+    $$
+
+    on write(tid, timestamp, addr) where $$ true $$
+    $$
+        monitor_handle_write(tid, timestamp, addr);
+    $$
+    on write_sized(tid, timestamp, addr, size) where $$ true $$
+    $$
+        monitor_handle_write_many(tid, timestamp, addr, size);
+    $$
+
+    on lock(tid, timestamp, addr) where $$ true $$
+    $$
+        monitor_handle_lock(tid, timestamp, addr);
+    $$
+
+    on unlock(tid, timestamp, addr) where $$ true $$
+    $$
+        monitor_handle_unlock(tid, timestamp, addr);
+    $$
+
+    on fork(tid, timestamp, newthreadid) where $$ true $$
+    $$
+        monitor_handle_fork(tid, timestamp, newthreadid);
+    $$
+    on join(tid, timestamp, threadid) where $$ true $$
+    $$
+        monitor_handle_join(tid, timestamp, threadid);
+    $$
+    on skipstart(tid, timestamp) where $$ true $$
+    $$
+        monitor_handle_skip_start(tid, timestamp);
+    $$
+    on skipend(tid, timestamp) where $$ true $$
+    $$
+        monitor_handle_skip_end(tid, timestamp);
+    $$
+    on done_(tid, timestamp) where $$ true $$
+    $$
+        monitor_handle_done(tid, timestamp);
+    $$
+
+}
