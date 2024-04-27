@@ -1,17 +1,17 @@
 stream type ThreadEvent shared(timestamp: uint64_t)
 {
-    read(addr : intptr_t);
-    write(addr : intptr_t);
-    atomicread(addr : intptr_t, mode : int);
-    atomicwrite(addr : intptr_t, mode : int);
-    lock(addr : intptr_t);
-    unlock(addr : intptr_t);
-    alloc(addr : intptr_t, size : size_t);
-    free(addr : intptr_t);
+    read(addr : uintptr_t);
+    write(addr : uintptr_t);
+    atomicread(addr : uintptr_t, mode : int);
+    atomicwrite(addr : uintptr_t, mode : int);
+    lock(addr : uintptr_t);
+    unlock(addr : uintptr_t);
+    alloc(addr : uintptr_t, size : size_t);
+    free(addr : uintptr_t);
     fork(newthreadid: uint64_t) creates ThreadEvent;
     join(threadid: uint64_t);
-    write_n(addr : intptr_t, size: size_t);
-    read_n(addr : intptr_t, size: size_t);
+    write_n(addr : uintptr_t, size: size_t);
+    read_n(addr : uintptr_t, size: size_t);
 }
 stream type ThreadEventH(threadid: int, inhole : int16_t, nextts: uint64_t, loststart: uint64_t, lastlost : uint64_t) extends ThreadEvent aggregate (uint64_t maxts = MAX(shared timestamp))
 {
@@ -28,17 +28,17 @@ stream processor TEProcessor(threadid : int) : ThreadEvent() -> ThreadEventH(thr
     }
 }
 
-buffer group Threads : ThreadEventH order by shared timestamp assume MAX(maxts)-100
+buffer group Threads : ThreadEventH order by shared timestamp assume MAX(maxts) m0m 100
 event source Program : ThreadEvent process using TEProcessor(0)  include in Threads
 
 stream type GlobalEvent shared (tid: int, timestamp: uint64_t)
 {
-    read(addr : intptr_t);
-    write(addr : intptr_t);
-    read_sized(addr : intptr_t, size: size_t);
-    write_sized(addr : intptr_t, size: size_t);
-    lock(addr : intptr_t);
-    unlock(addr : intptr_t);
+    read(addr : uintptr_t);
+    write(addr : uintptr_t);
+    read_sized(addr : uintptr_t, size: size_t);
+    write_sized(addr : uintptr_t, size: size_t);
+    lock(addr : uintptr_t);
+    unlock(addr : uintptr_t);
     fork(newthreadid: int);
     join(threadid: int);
     skipstart();
@@ -51,18 +51,21 @@ $$
 
     #include <limits.h>
     #include <stdint.h>
+    #include <inttypes.h>
     #include "monitor.h"
-    uint64_t minholeend=0;
+    uint64_t minholeend=UINT64_MAX;
     uint64_t lastemitts=0;
     uint64_t skipcount=0;
     uint64_t dropcount=0;
     uint64_t holescount=0;
+    uint64_t monitorcount=0;
     #define min(a, b) __vamos_min(a, b)
     #define max(a, b) __vamos_max(a, b)
 $$
 
 cleanup
 $$
+    fprintf(stderr, "Processed %lu events in monitor\n", monitorcount);
     fprintf(stderr, "Dropped %lu events in %lu holes\n", dropcount, holescount);
     fprintf(stderr, "Found %lu races\n", GetRaceCount());
 $$
@@ -97,6 +100,9 @@ arbiter : GlobalEvent
             $$
             on T : shared(ts) | where $$ ts < lastemitts $$
             $$
+                #ifdef DEBUGPRINT
+                printf("lost(tid=%i, ts=%lu, lastemitts=%lu)\n", $T.threadid;, ts, lastemitts);
+                #endif
                 if($T.loststart; == 0)
                 {
                     $T.loststart; = ts;
@@ -105,6 +111,9 @@ arbiter : GlobalEvent
             $$
             on T : | shared(ts) where $$ $T.loststart; > 0$$
             $$
+                #ifdef DEBUGPRINT
+                printf("skip(tid=%i, from=%lu, to=%lu, current=%lu, lastemitts=%lu)\n", $T.threadid;, $T.loststart;, $T.lastlost;, ts, lastemitts);
+                #endif
                 $yield skipstart($T.threadid;, lastemitts);
                 $yield skipend($T.threadid;, ts);
                 lastemitts=ts;
@@ -116,6 +125,9 @@ arbiter : GlobalEvent
             $$
             on T : my_hole(ts, n , lastts) |
             $$
+                #ifdef DEBUGPRINT
+                printf("hole(tid=%i, first=%lu, n=%lu, last=%lu)\n", $T.threadid;, ts, n, lastts);
+                #endif
                 skipcount+=n;
                 dropcount+=n;
                 holescount+=1;
@@ -180,7 +192,7 @@ arbiter : GlobalEvent
             on T : fork(ts,tid) | where $$ ts >= lastemitts $$
             $$
                 #ifdef DEBUGPRINT
-                printf("fork(tid=%i, ts=%lu, otid=%i)\n", $T.threadid;, ts, tid);
+                printf("fork(tid=%i, ts=%lu, otid=%i)\n", $T.threadid;, ts, (int) tid);
                 #endif
                 $yield fork($T.threadid;, ts, tid);
                 lastemitts=ts;
@@ -188,7 +200,7 @@ arbiter : GlobalEvent
             on T : join(ts,tid) | where $$ ts >= lastemitts $$
             $$
                 #ifdef DEBUGPRINT
-                printf("join(tid=%i, ts=%lu, otid=%i)\n", $T.threadid;, ts, tid);
+                printf("join(tid=%i, ts=%lu, otid=%i)\n", $T.threadid;, ts, (int) tid);
                 #endif
                 $yield join($T.threadid;, ts, tid);
                 lastemitts=ts;
@@ -238,51 +250,95 @@ arbiter : GlobalEvent
 monitor {
     on read(tid, timestamp, addr) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": read from %" PRIXPTR " @ %i\n", timestamp, addr, tid);
+        #endif
         monitor_handle_read(tid, timestamp, addr);
+        monitorcount++;
     $$
     on read_sized(tid, timestamp, addr, size) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": read_sized from %" PRIXPTR " @ %i\n", timestamp, addr, tid);
+        #endif
         monitor_handle_read_many(tid, timestamp, addr, size);
+        monitorcount++;
     $$
 
     on write(tid, timestamp, addr) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": write to %" PRIXPTR " @ %i\n", timestamp, addr, tid);
+        #endif
         monitor_handle_write(tid, timestamp, addr);
+        monitorcount++;
     $$
     on write_sized(tid, timestamp, addr, size) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": write_sized to %" PRIXPTR " @ %i\n", timestamp, addr, tid);
+        #endif
         monitor_handle_write_many(tid, timestamp, addr, size);
+        monitorcount++;
     $$
 
     on lock(tid, timestamp, addr) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": lock %" PRIXPTR " @ %i\n", timestamp, addr, tid);
+        #endif
         monitor_handle_lock(tid, timestamp, addr);
+        monitorcount++;
     $$
 
     on unlock(tid, timestamp, addr) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": unlock %" PRIXPTR " @ %i\n", timestamp, addr, tid);
+        #endif
         monitor_handle_unlock(tid, timestamp, addr);
+        monitorcount++;
     $$
 
     on fork(tid, timestamp, newthreadid) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": fork %i @ %i\n", timestamp, newthreadid, tid);
+        #endif
         monitor_handle_fork(tid, timestamp, newthreadid);
+        monitorcount++;
     $$
     on join(tid, timestamp, threadid) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": join %i @ %i\n", timestamp, threadid, tid);
+        #endif
         monitor_handle_join(tid, timestamp, threadid);
+        monitorcount++;
     $$
     on skipstart(tid, timestamp) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": skipstart @ %i\n", timestamp, tid);
+        #endif
         monitor_handle_skip_start(tid, timestamp);
+        monitorcount++;
     $$
     on skipend(tid, timestamp) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": skipend @ %i\n", timestamp, tid);
+        #endif
         monitor_handle_skip_end(tid, timestamp);
+        monitorcount++;
     $$
     on done_(tid, timestamp) where $$ true $$
     $$
+        #ifdef DEBUGPRINT
+        printf("M%" PRIu64 ": done @ %i\n", timestamp, tid);
+        #endif
         monitor_handle_done(tid, timestamp);
+        monitorcount++;
     $$
 
 }
